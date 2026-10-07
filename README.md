@@ -75,7 +75,7 @@ Run order: 01 → 02 → 03 → (05). (03 already includes synonyms; 04 is only 
 `sql/03_dcp_functions.sql` + notebook `05` add the **DCP** (scenario-based consumption projection)
 engine as Genie trusted-asset functions, ported from the *DCP Smart Estimation Calculator*:
 
-- `dcp_estimate(workload_type, quantity, runtime_hours, events_per_month, concurrent_users, planning_days)`
+- `dcp_estimate(workload_type, quantity, runtime_low, runtime_expected, runtime_high, events_per_month, concurrent_users, planning_days)`
   — returns LOW/EXPECTED/HIGH/STRESS monthly DBU + USD at **governed account rates**
   (Jobs Serverless `$0.3465`/DBU, SQL Pro `$0.4235`/DBU). `workload_type` ∈
   `CONTINUOUS_STREAMING` | `EVENT_DRIVEN_BATCH` | `SQL_REPORTING`.

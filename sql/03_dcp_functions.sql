@@ -1,8 +1,9 @@
 CREATE OR REPLACE FUNCTION fevm_catalog_naren.lakemeter.dcp_estimate(
-  p_workload_type STRING, p_quantity INT, p_runtime_hours DOUBLE,
+  p_workload_type STRING, p_quantity INT,
+  p_runtime_low DOUBLE, p_runtime_expected DOUBLE, p_runtime_high DOUBLE,
   p_events_per_month DOUBLE, p_concurrent_users INT, p_planning_days INT)
 RETURNS TABLE(scenario STRING, workload_type STRING, compute STRING, estimated_dbu DOUBLE, rate DOUBLE, estimated_usd DOUBLE, basis STRING)
-COMMENT 'DCP Smart Estimation (planning-floor): scenario LOW/EXPECTED/HIGH/STRESS monthly DBU + USD for ONE workload, using governed account rates (Jobs Serverless 0.3465, SQL Pro 0.4235). p_workload_type in CONTINUOUS_STREAMING / EVENT_DRIVEN_BATCH / SQL_REPORTING. Streaming uses 730 hrs x intensity; batch uses runtime_hours x events/month; SQL is concurrency-aware (ceil(users x factor)/10 capacity bands x 4 DBU/h x active hours x planning_days).'
+COMMENT 'DCP Smart Estimation (planning-floor): scenario LOW/EXPECTED/HIGH/STRESS monthly DBU + USD for ONE workload, at governed rates (Jobs Serverless 0.3465, SQL Pro 0.4235). CONTINUOUS_STREAMING uses quantity (730 hrs x intensity). EVENT_DRIVEN_BATCH uses a runtime range: LOW=runtime_low, EXPECTED=runtime_expected, HIGH/STRESS=runtime_high (x events/month at 1 DBU/h; default events LOW=0,EXPECTED=1,HIGH=1,STRESS=4). SQL_REPORTING uses concurrent_users + planning_days (concurrency bands). Pass NULL for params not relevant to the type.'
 RETURN
   SELECT scenario, workload_type, compute, estimated_dbu, rate,
          round(estimated_dbu * rate, 2) AS estimated_usd, 'ARCHITECTURE_PLANNING_FLOOR' AS basis
@@ -14,7 +15,11 @@ RETURN
         WHEN upper(p_workload_type) IN ('CONTINUOUS_STREAMING','STREAMING')
           THEN 730.0 * s.cont_dbu_h * COALESCE(p_quantity,1)
         WHEN upper(p_workload_type) IN ('EVENT_DRIVEN_BATCH','SCHEDULED_BATCH','BATCH')
-          THEN 1.0 * COALESCE(p_runtime_hours,0) * COALESCE(p_events_per_month, s.events_default) * COALESCE(p_quantity,1)
+          THEN 1.0 * COALESCE(p_events_per_month, s.events_default) * COALESCE(p_quantity,1)
+               * (CASE s.scenario
+                    WHEN 'LOW'      THEN COALESCE(p_runtime_low, p_runtime_expected, 0)
+                    WHEN 'EXPECTED' THEN COALESCE(p_runtime_expected, p_runtime_low, 0)
+                    ELSE                 COALESCE(p_runtime_high, p_runtime_expected, 0) END)
         WHEN upper(p_workload_type) LIKE '%SQL%'
           THEN s.sql_active_h * COALESCE(p_planning_days,22) * 4.0
                * greatest(1, CAST(ceil(ceil(COALESCE(p_concurrent_users,1) * s.sql_conc_f)/10.0) AS INT))
