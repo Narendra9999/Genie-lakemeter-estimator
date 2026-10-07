@@ -8,8 +8,8 @@ no Marketplace, no Lakebase required. Built for the SEG/FEVM simulation.
 
 In `fevm_catalog_naren.lakemeter` (change the catalog/schema to retarget):
 
-- **10 reference tables** (`ref_*`) loaded from Lakemeter's pricing CSVs
-  (`backend/static/pricing/*.csv`): DBU rates, instance DBU rates, VM costs (~111K rows),
+- **10 reference tables** (`ref_*`) loaded from the pricing CSVs bundled in this repo
+  (`pricing_data/*.csv`, from Lakemeter OSS): DBU rates, instance DBU rates, VM costs (~111K rows),
   DBU multipliers, DBSQL rates + warehouse config, serverless rates, FM API rates,
   SKU↔region map.
 - **15 scalar SQL functions** (helpers): `get_instance_dbu_rate`, `get_vm_cost_per_hour`,
@@ -38,14 +38,14 @@ compute and serverless SQL have no separate VM cost (DBU price includes compute)
 ## Reproduce (e.g. in the customer workspace)
 
 Prereqs: Databricks CLI profile, a Pro/Serverless SQL warehouse, Databricks Assistant
-enabled, and the Lakemeter pricing CSVs available locally (`backend/static/pricing/`).
+enabled. The pricing CSVs are bundled in this repo under `pricing_data/`.
 
 ```bash
 CATALOG=<catalog>; SCHEMA=lakemeter; PROFILE=<profile>; WID=<sql_warehouse_id>
 
 # 1. Schema + volume, then upload the pricing CSVs
 databricks ... CREATE SCHEMA $CATALOG.$SCHEMA ; CREATE VOLUME $CATALOG.$SCHEMA.raw
-databricks fs cp backend/static/pricing/ dbfs:/Volumes/$CATALOG/$SCHEMA/raw/ --recursive
+databricks fs cp pricing_data/ dbfs:/Volumes/$CATALOG/$SCHEMA/raw/ --recursive
 
 # 2. Load tables + create functions (sql/01_load_tables.sql, sql/02_functions.sql)
 #    Run each statement via the SQL Statement Execution API / DBSQL editor.
