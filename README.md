@@ -1,4 +1,4 @@
-# Lakemeter → Genie Cost Estimator
+# Lakemeter → Genie Cost Estimator -e
 
 Exposes Lakemeter OSS's Databricks cost-estimation logic natively in Unity Catalog +
 a Genie Space, so users can ask workload-cost questions in natural language — no app,
