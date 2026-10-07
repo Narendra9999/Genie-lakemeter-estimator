@@ -55,6 +55,21 @@ reads the CSVs from the workspace folder via the `file:/Workspace/...` path (no 
 needed), then creates the Space and prints its URL. Uses the notebook's own auth for the
 Genie API — no tokens to configure.
 
+## Modular notebooks (run on a dedicated cluster)
+
+If you prefer step-by-step notebooks over the all-in-one, `notebooks/` has one per stage —
+import the folder and attach to any dedicated (or serverless) cluster, set the widgets, Run All:
+
+| Notebook | Lang | Does | Key widgets |
+|---|---|---|---|
+| `01_load_tables.py` | Python | Create schema + load the 10 pricing tables from the workspace folder (`file:/Workspace/...`) | `catalog`, `schema`, `pricing_path` |
+| `02_create_functions.sql` | SQL | `USE CATALOG/SCHEMA` then create all 29 functions (unqualified) | `catalog`, `schema` |
+| `03_create_genie_space.py` | Python | Build the Genie Space (tables + functions + synonyms + instructions) | `catalog`, `schema`, `warehouse_id`, `space_title` |
+| `04_add_synonyms.py` | Python | Add/refresh column synonyms on an *existing* Space (GET → inject → PATCH) | `catalog`, `schema`, `space_id` |
+
+Run order: 01 → 02 → 03. (03 already includes synonyms; 04 is only for enriching a Space made elsewhere.)
+`setup_genie_lakemeter.py` at the repo root does all of 01–03 in a single notebook.
+
 ## Reproduce manually (CLI / SQL editor)
 
 Prereqs: Databricks CLI profile, a Pro/Serverless SQL warehouse, Databricks Assistant
