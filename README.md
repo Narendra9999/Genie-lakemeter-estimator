@@ -35,10 +35,31 @@ Cost model (ported from Lakemeter's Postgres engine):
 `monthly_cost = dbu_per_hour × hours_per_month × dbu_price + vm_cost`. Serverless
 compute and serverless SQL have no separate VM cost (DBU price includes compute).
 
-## Reproduce (e.g. in the customer workspace)
+## Quickest path: run the setup notebook (recommended)
+
+`setup_genie_lakemeter.py` is a Databricks notebook that does **everything** in one run —
+creates the schema, loads the pricing tables, creates all 29 functions, and builds the
+Genie Space (with synonyms) — all parameterized via widgets:
+
+| Widget | Meaning |
+|---|---|
+| `catalog` / `schema` | where to create tables + functions (e.g. `main` / `lakemeter`) |
+| `warehouse_id` | Pro/Serverless SQL warehouse id for the Genie Space |
+| `pricing_path` | **workspace folder** holding the pricing CSVs (blank = `./pricing_data` next to the notebook) |
+| `space_title` | Genie Space title |
+| `create_genie_space` / `load_tables` | toggles |
+
+**Steps:** import this repo folder into the customer workspace (so `setup_genie_lakemeter.py`
+and `pricing_data/` sit together), open the notebook, set the widgets, and **Run All**. It
+reads the CSVs from the workspace folder via the `file:/Workspace/...` path (no UC volume
+needed), then creates the Space and prints its URL. Uses the notebook's own auth for the
+Genie API — no tokens to configure.
+
+## Reproduce manually (CLI / SQL editor)
 
 Prereqs: Databricks CLI profile, a Pro/Serverless SQL warehouse, Databricks Assistant
-enabled. The pricing CSVs are bundled in this repo under `pricing_data/`.
+enabled. The pricing CSVs are bundled in this repo under `pricing_data/`. (The manual
+path below uses a UC volume; the notebook above uses a workspace folder instead.)
 
 ```bash
 CATALOG=<catalog>; SCHEMA=lakemeter; PROFILE=<profile>; WID=<sql_warehouse_id>
