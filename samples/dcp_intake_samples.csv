@@ -1,0 +1,7 @@
+use_case_id,use_case_name,component_id,component_name,workload_type,quantity,runtime_low,runtime_expected,runtime_high,events_per_month,concurrent_users,planning_days
+SEND_US01,Reporting and Reconciliation,SEND_US01-C01,Continuous streaming data processing,CONTINUOUS_STREAMING,1,,,,,,22
+SEND_US01,Reporting and Reconciliation,SEND_US01-C02,Event-driven batch resiliency and backfill,EVENT_DRIVEN_BATCH,1,1,3,5,,,22
+SEND_US01,Reporting and Reconciliation,SEND_US01-SQL,Daily and on-demand reporting,SQL_REPORTING,,,,,,10,22
+FIN_CLAIMS_02,Claims Fraud Scoring,FIN_CLAIMS_02-C01,Real-time claims ingestion and scoring,CONTINUOUS_STREAMING,2,,,,,,20
+FIN_CLAIMS_02,Claims Fraud Scoring,FIN_CLAIMS_02-C02,Nightly model feature rebuild,EVENT_DRIVEN_BATCH,1,2,4,6,8,,20
+FIN_CLAIMS_02,Claims Fraud Scoring,FIN_CLAIMS_02-SQL,Fraud analyst dashboards,SQL_REPORTING,,,,,,35,20
