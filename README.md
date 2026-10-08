@@ -67,8 +67,9 @@ import the folder and attach to any dedicated (or serverless) cluster, set the w
 | `03_create_genie_space.py` | Python | Build the Genie Space (tables + functions + synonyms + instructions) | `catalog`, `schema`, `warehouse_id`, `space_title` |
 | `04_add_synonyms.py` | Python | Add/refresh column synonyms on an *existing* Space (GET → inject → PATCH) | `catalog`, `schema`, `space_id` |
 | `05_register_dcp_skill.py` | Python | Create the DCP estimation functions + register them as a Genie "skill" on an existing Space | `catalog`, `schema`, `space_id` |
+| `06_load_dcp_intake.py` | Python | Load a use-case **Excel/CSV intake** into `dcp_intake_components`, build the roll-up functions, and register the named-use-case skill on the Space | `catalog`, `schema`, `intake_path`, `space_id` |
 
-Run order: 01 → 02 → 03 → (05). (03 already includes synonyms; 04 is only for enriching a Space made elsewhere. 05 adds the DCP skill — run it after 03 with the Space id.)
+Run order: 01 → 02 → 03 → (05) → (06). (03 already includes synonyms; 04 is only for enriching a Space made elsewhere. 05 adds the DCP workload skill; 06 adds named use cases from an Excel/CSV intake.)
 
 ### DCP Smart Estimation skill
 
@@ -86,6 +87,35 @@ This is the **planning-floor** subset of the engine (governed-rate scenario math
 historical-calibration pass (which reads `system.billing.usage`) is not part of the Genie skill.
 Ask Genie: *"Give a DCP estimation for a continuous streaming workload."*
 `setup_genie_lakemeter.py` at the repo root does all of 01–03 in a single notebook.
+
+### Named use cases via an Excel/CSV intake
+
+Instead of describing each workload in chat, define a use case once in an **Excel/CSV intake**
+(`dcp_intake_template.csv`) and let Genie estimate it **by name**. Flow: *Excel/CSV →
+`dcp_intake_components` table → Genie* (Genie reads the table, not the file).
+
+Intake format — **one row per workload component**:
+
+| Column | For | Notes |
+|---|---|---|
+| `use_case_id` | all | e.g. `SEND_US01` (how you'll ask Genie) |
+| `use_case_name` | all | optional label |
+| `component_id` / `component_name` | all | unique id + description per component |
+| `workload_type` | all | `CONTINUOUS_STREAMING` \| `EVENT_DRIVEN_BATCH` \| `SQL_REPORTING` |
+| `quantity` | streaming | parallel copies (default 1) |
+| `runtime_low` / `runtime_expected` / `runtime_high` | batch | hours per run, per scenario |
+| `events_per_month` | batch | blank = scenario defaults 0/1/1/4 |
+| `concurrent_users` / `planning_days` | sql | concurrency + working days (default 22) |
+
+Leave cells blank where not relevant. Steps:
+1. Fill `dcp_intake_template.csv` in Excel (keep as `.csv`, or save `.xlsx` — the loader reads both;
+   `.xlsx` needs `%pip install openpyxl`).
+2. Put it in a workspace folder and run **`notebooks/06_load_dcp_intake.py`** (`intake_path`, `space_id`).
+3. Ask Genie: *"Give the DCP estimation for `<use_case_id>`"* → `dcp_estimate_usecase('<use_case_id>')`
+   rolls up all its components per scenario; `dcp_estimate_usecase_components('<use_case_id>')` gives
+   the per-component breakdown.
+
+`sql/04_dcp_usecase.sql` has the table DDL + roll-up functions for the manual/SQL path.
 
 ## Reproduce manually (CLI / SQL editor)
 
