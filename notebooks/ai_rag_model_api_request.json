@@ -1,1 +1,172 @@
-test
+{
+  "_calculator_version": "4.0.2",
+  "_purpose": "MD AI Assistant RAG request rebuilt from the team's own inputs (intake workbook + Marco Rocco email 21 Sep 2026). Used to check the presented estimate against the current calculator.",
+  "_sources": {
+    "S1": "MD AI Assistant - DCP Databricks Cost Estimation Intake v1.0.xlsx (Sandeep Singh, 18 Sep 2026)",
+    "S2": "Email 'Re: Databricks costs' from Marco Rocco, 21 Sep 2026 (answers 1-9)",
+    "S3": "Teams chat 'Databricks costs', Marco Rocco, 18 Sep 2026 (scope: model serving endpoints only)",
+    "P1": "MD AI Assistant RAG Confirmed Demand and Architecture 900.pptx (presented, calculator v3.9.1.02)"
+  },
+  "_rules": "Expected token values are left null on purpose: the presented estimate used the midpoint of the team's low/high range, and the calculator derives that midpoint itself and labels it RANGE_DERIVED.",
+  "use_case_id": "AI_RAG_MODEL_API",
+  "use_case_name": "MD AI Assistant RAG",
+  "scenarios": [
+    "LOW",
+    "EXPECTED",
+    "HIGH"
+  ],
+  "region": "US_EAST_1",
+  "model_days_per_month": 30,
+  "model_endpoints": [
+    {
+      "_source": "S2 Q4 (~33%, ~330/day) and Q6 (input ~500-10,000, output ~50-300)",
+      "component_id": "MD-AI-C01",
+      "model": "gpt-5.4-nano",
+      "role": "Router, rerank, answerability",
+      "calls_per_day": 330,
+      "input_tokens_low": 500,
+      "input_tokens_expected": null,
+      "input_tokens_high": 10000,
+      "output_tokens_low": 50,
+      "output_tokens_expected": null,
+      "output_tokens_high": 300,
+      "serving_mode": "PAY_PER_TOKEN",
+      "evidence": "Marco Rocco email 21 Sep 2026"
+    },
+    {
+      "_source": "S2 Q4 (~30%, ~300/day) and Q6 (query ~50-200, chunk ~600; vectors only, no text out). Low = smallest query, high = chunk size.",
+      "component_id": "MD-AI-C02",
+      "model": "gte-large-en",
+      "role": "Query and incremental chunk embeddings",
+      "calls_per_day": 300,
+      "input_tokens_low": 50,
+      "input_tokens_expected": null,
+      "input_tokens_high": 600,
+      "output_tokens_low": 0,
+      "output_tokens_expected": 0,
+      "output_tokens_high": 0,
+      "serving_mode": "PAY_PER_TOKEN",
+      "evidence": "Marco Rocco email 21 Sep 2026"
+    },
+    {
+      "_source": "S2 Q4 (~22%, ~215/day) and Q6 (input ~1,000-4,000, output ~100-2,000)",
+      "component_id": "MD-AI-C03",
+      "model": "gpt-5-4",
+      "role": "Indexing enrichment",
+      "calls_per_day": 215,
+      "input_tokens_low": 1000,
+      "input_tokens_expected": null,
+      "input_tokens_high": 4000,
+      "output_tokens_low": 100,
+      "output_tokens_expected": null,
+      "output_tokens_high": 2000,
+      "serving_mode": "PAY_PER_TOKEN",
+      "evidence": "Marco Rocco email 21 Sep 2026"
+    },
+    {
+      "_source": "S2 Q4 (~13%, ~132/day) and Q6 (input ~5,000-40,000, output ~300-1,500)",
+      "component_id": "MD-AI-C04",
+      "model": "claude-sonnet-4-6",
+      "role": "Final answer",
+      "calls_per_day": 132,
+      "input_tokens_low": 5000,
+      "input_tokens_expected": null,
+      "input_tokens_high": 40000,
+      "output_tokens_low": 300,
+      "output_tokens_expected": null,
+      "output_tokens_high": 1500,
+      "serving_mode": "PAY_PER_TOKEN",
+      "evidence": "Marco Rocco email 21 Sep 2026"
+    }
+  ],
+  "one_time_model_jobs": [
+    {
+      "_source": "S2 Q8 (~42,600 calls; ~70-75M input; ~22-24M output)",
+      "component_id": "MD-AI-OT-GPT",
+      "model": "gpt-5-4",
+      "description": "Full-corpus indexing enrichment",
+      "input_tokens_low": 70000000,
+      "input_tokens_high": 75000000,
+      "output_tokens_low": 22000000,
+      "output_tokens_high": 24000000,
+      "api_calls": 42600,
+      "serving_mode": "PAY_PER_TOKEN"
+    },
+    {
+      "_source": "S2 Q8 (~15,000 batched calls; ~33M input; vectors only)",
+      "component_id": "MD-AI-OT-EMBED",
+      "model": "gte-large-en",
+      "description": "Full-corpus embeddings",
+      "input_tokens_low": 33000000,
+      "input_tokens_high": 33000000,
+      "output_tokens_low": 0,
+      "output_tokens_high": 0,
+      "api_calls": 15000,
+      "serving_mode": "PAY_PER_TOKEN"
+    }
+  ],
+  "scope_included": [
+    "Databricks model inference",
+    "Embedding generation"
+  ],
+  "scope_excluded": [
+    "On-premises indexing orchestration",
+    "Retrieval",
+    "Vector storage and search",
+    "Application compute",
+    "General storage"
+  ],
+  "notes": [
+    "990 endpoint calls/day stated (S1, S2 Q1); 977 allocated; 13/day unallocated and not assigned.",
+    "Average concurrency under 1; 16 sustained / 32 load-tested are capacity ceilings, not demand (S2 Q2).",
+    "Expected tokens are midpoints of the supplied ranges until first-run actuals exist."
+  ],
+  "metadata": {
+    "owner": "Marco Rocco",
+    "product": "Developer Experience (Mastercard Developer)",
+    "stated_calls_per_day": 990,
+    "final_answer_alternatives": [
+      "claude-sonnet-4-6",
+      "gpt-5-4",
+      "gpt-5.4-nano",
+      "gpt-5-4-mini"
+    ],
+    "presented": {
+      "source": "MD AI Assistant RAG Confirmed Demand and Architecture 900.pptx / Cost Estimation and Model Comparison decks (calculator v3.9.1.02, $0.07/DBU planning reference)",
+      "recurring_monthly_usd": {
+        "LOW": 104.69,
+        "EXPECTED": 475.6,
+        "HIGH": 846.51
+      },
+      "one_time_usd": {
+        "LOW": 509.29,
+        "HIGH": 551.79
+      },
+      "expected_by_component_usd": {
+        "MD-AI-C04": 320.76,
+        "MD-AI-C03": 141.9,
+        "MD-AI-C01": 12.56,
+        "MD-AI-C02": 0.38
+      },
+      "final_answer_alternative_totals_usd": {
+        "claude-sonnet-4-6": {
+          "LOW": 104.69,
+          "EXPECTED": 475.6,
+          "HIGH": 846.51
+        },
+        "gpt-5-4": {
+          "LOW": 94.79,
+          "EXPECTED": 431.05,
+          "HIGH": 767.31
+        },
+        "gpt-5.4-nano": {
+          "LOW": 32.91,
+          "EXPECTED": 177.11,
+          "HIGH": 321.32
+        },
+        "gpt-5-4-mini": "PENDING"
+      },
+      "overall_confidence": "MEDIUM"
+    }
+  }
+}
