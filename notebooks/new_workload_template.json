@@ -1,0 +1,63 @@
+{
+  "_calculator_version": "4.0.2",
+  "_how_to_use": "Fill in values. Use null for unknown values (they stay PENDING, never zero). Delete sections you do not need; a null list section means none.",
+  "_rules": "Numbers and true/false without quotes (30, not \"30\"). Keys starting with _ are comments and are ignored. use_case_id, use_case_name, and each component_id are required.",
+  "use_case_id": "NEW_WORKLOAD_01",
+  "use_case_name": "Describe the workload",
+  "scenarios": [
+    "LOW",
+    "EXPECTED",
+    "HIGH"
+  ],
+  "region": "US_EAST_1",
+  "processing": [
+    {
+      "_workload_types": [
+        "CONTINUOUS_STREAMING",
+        "EVENT_DRIVEN_BATCH",
+        "SCHEDULED_BATCH",
+        "ML_TRAINING",
+        "BATCH_SCORING"
+      ],
+      "component_id": "NEW-C01",
+      "name": "Daily batch ingestion",
+      "workload_type": "SCHEDULED_BATCH",
+      "pattern": "SCHEDULED",
+      "runtime_hours_low": 0.5,
+      "runtime_hours_expected": 1.0,
+      "runtime_hours_high": 2.0,
+      "runs_per_month": 30,
+      "evidence": "Who supplied these values"
+    }
+  ],
+  "sql": {
+    "component_id": "NEW-SQL",
+    "name": "Dashboards",
+    "concurrent_users": 5,
+    "working_days_per_month": 22
+  },
+  "transfer": {
+    "daily_gb_low": 1,
+    "daily_gb_expected": 2,
+    "daily_gb_high": 4,
+    "transfer_days_per_month": 22,
+    "initial_transfer_gb": null
+  },
+  "storage": {
+    "retained_tb": 1.0,
+    "files_per_day": 50,
+    "encrypted_files_per_day": 0,
+    "kms_keys": 0,
+    "days_per_month": 30,
+    "s3_write_requests_per_file": 1,
+    "s3_read_requests_per_file": null
+  },
+  "model_endpoints": [],
+  "one_time_model_jobs": [],
+  "assumptions": {
+    "_note": "Optional overrides. Single-value settings take a number, e.g. {\"batch_dbu_per_hour\": 2.0}. Per-scenario settings take a scenario map, e.g. {\"sql_active_hours_per_day\": {\"HIGH\": 3.0}}; unlisted scenarios keep their defaults."
+  },
+  "scope_included": [],
+  "scope_excluded": [],
+  "notes": []
+}
