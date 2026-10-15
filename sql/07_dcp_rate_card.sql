@@ -1,5 +1,5 @@
 -- DCP rate card for test workspaces WITHOUT negotiated account prices (list prices).
--- At Mastercard run notebooks/09_load_rate_card.py with rate_source = ACCOUNT_PRICES instead.
+-- In production run notebooks/09_load_rate_card.py with rate_source = ACCOUNT_PRICES instead.
 -- 1. seed with the calculator v4.0.2 reference registry (AWS rows are used as-is)
 DELETE FROM __FQ__.dcp_rate_card
 -- @@
@@ -29,5 +29,5 @@ WHEN MATCHED THEN UPDATE SET
   status = CASE WHEN s.rate IS NULL THEN 'PENDING' ELSE 'REFERENCE_ONLY' END,
   source = 'system.billing.list_prices (list price; account rates not available in this workspace)',
   observed_rate = t.rate,
-  notes = 'List price used for testing. Mastercard estimates use the governed rate from system.billing.account_prices.',
+  notes = 'List price used for testing; production estimates use the governed rate from system.billing.account_prices.',
   effective_start = '2026-01-01', effective_end = NULL, refreshed_at = current_timestamp()

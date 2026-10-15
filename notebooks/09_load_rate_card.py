@@ -12,7 +12,7 @@
 # MAGIC
 # MAGIC | `rate_source` | Databricks DBU rates from | `status` | Use |
 # MAGIC |---|---|---|---|
-# MAGIC | `ACCOUNT_PRICES` | `system.billing.account_prices` (negotiated) | `GOVERNED` | Mastercard |
+# MAGIC | `ACCOUNT_PRICES` | `system.billing.account_prices` (negotiated) | `GOVERNED` | Production |
 # MAGIC | `LIST_PRICES` | `system.billing.list_prices` | `REFERENCE_ONLY` | Test workspaces without account prices |
 # MAGIC
 # MAGIC A Databricks SKU with no single current price is written as **PENDING** (rate NULL): the calculator then
@@ -54,7 +54,7 @@ for r in SEED["rows"]:
         r.update(observed_rate=r["rate"], rate=rate, status=status if rate is not None else "PENDING",
                  source=table if rate is not None else f"{table}: {n} current prices for {bsku} (exactly one required)",
                  effective_start="2026-01-01", effective_end=None,
-                 notes="" if SRC == "ACCOUNT_PRICES" else "List price used for testing. Mastercard estimates use system.billing.account_prices.")
+                 notes="" if SRC == "ACCOUNT_PRICES" else "List price used for testing; production estimates use system.billing.account_prices.")
     rows.append((r["provider"], r["service"], r["sku"], r["unit"], r["region"], r["rate"], r["status"], r["source"],
                  r["effective_start"], r["effective_end"], r["observed_rate"], r["notes"], bsku))
 df = spark.createDataFrame(rows, "provider string, service string, sku string, unit string, region string, rate double, status string, "
