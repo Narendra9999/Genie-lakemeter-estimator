@@ -1,14 +1,56 @@
+CREATE OR REPLACE TABLE fevm_catalog_naren.lakemeter.dcp_list_price_rates
+COMMENT 'Snapshot of current AWS Databricks list prices from system.billing.list_prices (DBU SKUs). Primary rate source for DCP estimates. Refresh from time to time by re-running this statement; refreshed_at shows the snapshot time.'
+AS SELECT upper(sku_name) AS sku_name, usage_unit, currency_code,
+          CAST(coalesce(pricing.effective_list.default, pricing.default) AS DOUBLE) AS rate,
+          price_start_time, current_timestamp() AS refreshed_at
+   FROM system.billing.list_prices
+   WHERE upper(cloud)='AWS' AND usage_unit='DBU'
+     AND price_start_time <= current_timestamp()
+     AND (price_end_time IS NULL OR price_end_time > current_timestamp())
+     AND coalesce(pricing.effective_list.default, pricing.default) IS NOT NULL
+-- @@
+CREATE OR REPLACE TABLE fevm_catalog_naren.lakemeter.dcp_governed_rates (
+  service_key STRING, rate DOUBLE, currency STRING, note STRING)
+COMMENT 'Governed (account-negotiated) DCP rates. FALLBACK only - used when no current list price exists for the service/tier/region.'
+-- @@
+INSERT INTO fevm_catalog_naren.lakemeter.dcp_governed_rates VALUES
+ ('JOBS_SERVERLESS',0.3465,'USD','Governed account override (DCP calculator v3.8)'),
+ ('SQL_PRO',0.4235,'USD','Governed account override (DCP calculator v3.8)')
+-- @@
+CREATE OR REPLACE FUNCTION fevm_catalog_naren.lakemeter.dcp_resolve_rate(p_service STRING, p_tier STRING, p_region STRING)
+RETURNS TABLE(rate DOUBLE, rate_source STRING, rate_sku STRING)
+COMMENT 'Resolve the DBU rate for a DCP service (JOBS_SERVERLESS / SQL_PRO). 1st: list price snapshot dcp_list_price_rates (refreshed from system.billing.list_prices) for {tier}_{service}_COMPUTE_{sku_region}; 2nd (fallback): dcp_governed_rates. Always returns exactly one row.'
+RETURN
+  WITH k AS (
+    SELECT upper(coalesce(p_tier,'ENTERPRISE')) || '_' || upper(p_service) || '_COMPUTE_' ||
+           upper(coalesce(max(m.sku_region),'US_EAST_N_VIRGINIA')) AS sku
+    FROM fevm_catalog_naren.lakemeter.ref_sku_region_map m
+    WHERE upper(m.cloud)='AWS' AND lower(m.region_code)=lower(coalesce(p_region,'us-east-1'))),
+  lp AS (
+    SELECT max_by(l.rate, l.price_start_time) AS rate
+    FROM fevm_catalog_naren.lakemeter.dcp_list_price_rates l, k
+    WHERE l.sku_name = k.sku),
+  gv AS (
+    SELECT max(rate) AS rate FROM fevm_catalog_naren.lakemeter.dcp_governed_rates
+    WHERE upper(service_key)=upper(p_service))
+  SELECT coalesce(lp.rate, gv.rate) AS rate,
+         CASE WHEN lp.rate IS NOT NULL THEN 'LIST_PRICE' WHEN gv.rate IS NOT NULL THEN 'GOVERNED_FALLBACK' ELSE 'NO_RATE' END AS rate_source,
+         k.sku AS rate_sku
+  FROM k, lp, gv
+-- @@
 CREATE OR REPLACE FUNCTION fevm_catalog_naren.lakemeter.dcp_estimate(
   p_workload_type STRING, p_quantity INT,
   p_runtime_low DOUBLE, p_runtime_expected DOUBLE, p_runtime_high DOUBLE,
-  p_events_per_month DOUBLE, p_concurrent_users INT, p_planning_days INT)
-RETURNS TABLE(scenario STRING, workload_type STRING, compute STRING, estimated_dbu DOUBLE, rate DOUBLE, estimated_usd DOUBLE, basis STRING)
-COMMENT 'DCP Smart Estimation (planning-floor): scenario LOW/EXPECTED/HIGH/STRESS monthly DBU + USD for ONE workload, at governed rates (Jobs Serverless 0.3465, SQL Pro 0.4235). CONTINUOUS_STREAMING uses quantity (730 hrs x intensity). EVENT_DRIVEN_BATCH uses a runtime range: LOW=runtime_low, EXPECTED=runtime_expected, HIGH/STRESS=runtime_high (x events/month at 1 DBU/h; default events LOW=0,EXPECTED=1,HIGH=1,STRESS=4). SQL_REPORTING uses concurrent_users + planning_days (concurrency bands). Pass NULL for params not relevant to the type.'
+  p_events_per_month DOUBLE, p_concurrent_users INT, p_planning_days INT,
+  p_tier STRING DEFAULT 'ENTERPRISE', p_region STRING DEFAULT 'us-east-1')
+RETURNS TABLE(scenario STRING, workload_type STRING, compute STRING, estimated_dbu DOUBLE, rate DOUBLE, estimated_usd DOUBLE, basis STRING, rate_source STRING, rate_sku STRING)
+COMMENT 'DCP Smart Estimation (planning-floor): LOW/EXPECTED/HIGH/STRESS monthly DBU + USD for ONE workload. RATE: first the list price from the dcp_list_price_rates snapshot (refreshed from system.billing.list_prices) ({tier}_{JOBS_SERVERLESS|SQL_PRO}_COMPUTE_{region}), falling back to governed rates (Jobs Serverless 0.3465, SQL Pro 0.4235); rate_source says which. p_tier default ENTERPRISE, p_region default us-east-1. CONTINUOUS_STREAMING uses quantity (730 hrs x intensity). EVENT_DRIVEN_BATCH uses runtime_low/expected/high per scenario x events/month at 1 DBU/h (default events LOW=0,EXPECTED=1,HIGH=1,STRESS=4). SQL_REPORTING uses concurrent_users + planning_days (concurrency bands). Pass NULL for params not relevant to the type.'
 RETURN
-  SELECT scenario, workload_type, compute, estimated_dbu, rate,
-         round(estimated_dbu * rate, 2) AS estimated_usd, 'ARCHITECTURE_PLANNING_FLOOR' AS basis
+  SELECT x.scenario, x.workload_type, x.compute, x.estimated_dbu, r.rate,
+         round(x.estimated_dbu * r.rate, 2) AS estimated_usd, 'ARCHITECTURE_PLANNING_FLOOR' AS basis,
+         r.rate_source, r.rate_sku
   FROM (
-    SELECT s.scenario,
+    SELECT s.scenario, s.ord,
       upper(p_workload_type) AS workload_type,
       CASE WHEN upper(p_workload_type) LIKE '%SQL%' THEN 'SQL_PRO' ELSE 'JOBS_SERVERLESS' END AS compute,
       CASE
@@ -23,12 +65,14 @@ RETURN
         WHEN upper(p_workload_type) LIKE '%SQL%'
           THEN s.sql_active_h * COALESCE(p_planning_days,22) * 4.0
                * greatest(1, CAST(ceil(ceil(COALESCE(p_concurrent_users,1) * s.sql_conc_f)/10.0) AS INT))
-        ELSE NULL END AS estimated_dbu,
-      CASE WHEN upper(p_workload_type) LIKE '%SQL%' THEN 0.4235 ELSE 0.3465 END AS rate
-    FROM (VALUES ('LOW',0.5,0.5,0.5,0.0),('EXPECTED',1.0,1.0,1.0,1.0),('HIGH',1.5,2.0,1.5,1.0),('STRESS',2.0,4.0,2.0,4.0))
-         AS s(scenario, cont_dbu_h, sql_active_h, sql_conc_f, events_default)
+        ELSE NULL END AS estimated_dbu
+    FROM (VALUES ('LOW',1,0.5,0.5,0.5,0.0),('EXPECTED',2,1.0,1.0,1.0,1.0),('HIGH',3,1.5,2.0,1.5,1.0),('STRESS',4,2.0,4.0,2.0,4.0))
+         AS s(scenario, ord, cont_dbu_h, sql_active_h, sql_conc_f, events_default)
   ) x
-  ORDER BY CASE scenario WHEN 'LOW' THEN 1 WHEN 'EXPECTED' THEN 2 WHEN 'HIGH' THEN 3 ELSE 4 END
+  CROSS JOIN fevm_catalog_naren.lakemeter.dcp_resolve_rate(
+      CASE WHEN upper(p_workload_type) LIKE '%SQL%' THEN 'SQL_PRO' ELSE 'JOBS_SERVERLESS' END,
+      coalesce(p_tier,'ENTERPRISE'), coalesce(p_region,'us-east-1')) r
+  ORDER BY x.ord
 -- @@
 CREATE OR REPLACE FUNCTION fevm_catalog_naren.lakemeter.dcp_estimate_storage(
   p_daily_low DOUBLE, p_daily_expected DOUBLE, p_daily_high DOUBLE, p_planning_days INT)

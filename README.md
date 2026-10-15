@@ -4,6 +4,37 @@ Exposes Lakemeter OSS's Databricks cost-estimation logic natively in Unity Catal
 a Genie Space, so users can ask workload-cost questions in natural language — no app,
 no Marketplace, no Lakebase required. Built for the SEG/FEVM simulation.
 
+## Install in one notebook (recommended)
+
+`setup_genie_dcp_agent.py` builds the **complete Genie Cost Estimator Agent** in one run: pricing tables, list-price
+functions, workload sizing, the DCP Smart Estimation Calculator v4.0.2 (as Unity Catalog functions), the DCP rate card, named use
+cases, and the Genie agent itself (instructions, column synonyms, trusted functions, example and sample questions).
+It is self-contained — the only other thing to upload is the `pricing_data/` folder.
+
+1. Import `setup_genie_dcp_agent.py` and the `pricing_data/` folder into the same workspace folder
+   (or a Git folder cloned from this repo).
+2. Attach to a UC-enabled cluster (DBR 13.3 LTS+) or serverless, set the widgets, **Run all**:
+
+| Widget | Value |
+|---|---|
+| `catalog` / `schema` | Target location, e.g. `<catalog>` / `lakemeter` |
+| `warehouse_id` | Pro or Serverless SQL warehouse the agent runs on |
+| `pricing_path` | Blank = `./pricing_data` next to the notebook (workspace folder or `/Volumes/...`) |
+| `rate_source` | `ACCOUNT_PRICES` (governed, production) or `LIST_PRICES` (workspaces without account prices). Applies to **every** estimate: Lakemeter, sizing and DCP |
+| `price_regions` | Regions to load into the Lakemeter price card (`us-east-1` default; comma list or `ALL`). Other regions return PENDING |
+| `requests_path` | Optional folder of use-case request JSON files (format: `notebooks/new_workload_template.json`) |
+| `space_id` | Blank = create a new agent; an existing id = update that agent in place (same URL and MCP endpoint) |
+| `user_group` | Optional group to grant `USE`/`SELECT`/`EXECUTE`, `CAN RUN` on the agent and `CAN USE` on the warehouse |
+| `smoke_test` | Asks the new agent a DCP question and prints the answer |
+
+The notebook prints the agent URL and its MCP endpoint (`/api/2.0/mcp/genie/<space_id>`) for the Copilot connection.
+Re-running is safe (every step is idempotent). The notebook is generated — after changing the calculator, the SQL
+or the agent definition, rebuild it:
+
+```
+python3 calculator/build_sql.py && python3 calculator/build_notebook.py && python3 calculator/build_setup.py
+```
+
 ## What it creates
 
 In `fevm_catalog_naren.lakemeter` (change the catalog/schema to retarget):
@@ -35,7 +66,55 @@ Cost model (ported from Lakemeter's Postgres engine):
 `monthly_cost = dbu_per_hour × hours_per_month × dbu_price + vm_cost`. Serverless
 compute and serverless SQL have no separate VM cost (DBU price includes compute).
 
-## Quickest path: run the setup notebook (recommended)
+### Governed prices (`sql/09_governed_prices.sql`)
+
+Every Lakemeter DBU price goes through `get_dbu_price`, which reads **`ref_dbu_price_card`** — built from
+`system.billing.account_prices` (`GOVERNED`) or, in test workspaces, `system.billing.list_prices` (`REFERENCE_ONLY`).
+The DCP calculator's `dcp_rate_card` is loaded from the same table, so all skills quote the same rate.
+
+- Billing SKU = `<TIER>_<PRODUCT>_<SKU REGION>` for regional SKUs (e.g. `ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_EAST_N_VIRGINIA`),
+  else `<TIER>_<PRODUCT>` (e.g. `ENTERPRISE_JOBS_COMPUTE`). Exactly one current price is required.
+- **No price → PENDING**: `get_dbu_price` returns NULL, so the DBU cost and total are NULL and the agent says PENDING with
+  the reason (`get_dbu_price_status`). There is no list-price fallback (previously a missing price silently became $0).
+- The Lakemeter CSV price is kept as `list_price_reference` for comparison only. DBU *consumption* (DBU/hour per
+  instance, warehouse size, serverless size, tokens) still comes from the Lakemeter tables.
+- **VM costs** for classic compute remain cloud on-demand list prices (`ref_vm_costs`) and are labelled as such.
+- Refresh with `notebooks/09_load_rate_card.py` (both rate cards), e.g. daily.
+
+### Workload sizing (when the user doesn't know the cluster)
+
+`sql/08_workload_sizing.sql` turns a described workload (type, GB per day, runs per day, optional batch window) into a
+cluster and prices it with the functions above. Example: *"10 GB of incremental ingestion daily"* → 1 driver + 1 ×
+m5d.xlarge, 13 / 20 / 35 min per run → $4.73 / $7.28 / $12.74 per month on classic Jobs (Low / Expected / High; FEVM list prices).
+
+| Function / table | Does |
+|---|---|
+| `size_cluster(p_workload, p_data_gb, p_runs_per_day, p_window_minutes, p_cloud, p_node_type, p_max_workers, p_region)` | Node type, workers, autoscale range, runtime per run (low / expected / high), workers needed vs the worker limit, status (`FITS_WINDOW` / `EXCEEDS_WINDOW` / `EXCEEDS_POLICY`), options, throughput basis, assumptions, tips |
+| `estimate_sized_workload(p_workload, p_data_gb, p_runs_per_day, p_days_per_month, p_window_minutes, ...)` | `size_cluster` → `estimate_jobs_classic_cost` / `estimate_serverless_compute_cost`: JOBS_CLASSIC and JOBS_SERVERLESS × LOW / EXPECTED / HIGH |
+| `ref_sizing_profiles` | Per workload (`INGESTION`, `ETL`, `STREAMING`, `ML_TRAINING`, `ML_INFERENCE`): throughput range (GB per worker core-hour), memory working-set factor, default batch window, cluster start minutes, `calibration_status` |
+| `ref_sizing_policy` | Worker limit and allowed node types per cloud (default guardrail 100 workers; load the job cluster policy with notebook 11) |
+| `ref_sizing_node_families` | Node families allowed per cloud and category (AWS: m5d, r5d, c5d, i3, g5) |
+
+- **Cores** = GB per run ÷ (expected GB per core-hour × usable window hours). **Memory** binds only where the data is held
+  (training 4 GB per GB, ETL shuffle 0.5; ingestion streams through). The smallest fitting node within 32 workers is
+  chosen, then the smallest within the worker limit.
+- **Never clipped silently**: above the worker limit the result says `EXCEEDS_WINDOW` and lists the options (longer
+  runtime on the capped cluster, N parallel jobs, serverless, or a higher limit). Serverless rows are sized without a limit.
+- **Ranges**: the cluster is sized on EXPECTED throughput; LOW / HIGH throughput give the runtime and cost range.
+
+### Calibrating sizing from job history (`notebooks/11_calibrate_sizing.py`)
+
+Measures throughput and cluster start time per profile from the workspace's successful job runs: run window and
+durations (`system.lakeflow`), worker core-hours and CPU (`system.compute.node_timeline`; single-node clusters use the
+driver), GB written (Delta history via lineage, or the worker network-bytes proxy when history is not readable), DBUs
+and cost (`system.billing.usage` × `account_prices` / `list_prices`). LOW / EXPECTED / HIGH = 25th / 50th / 75th
+percentile; a hold-out backtest (older ⅔ → newest ⅓) reports the error against the current values. `DRY_RUN` reports;
+`APPLY` writes `ref_sizing_profiles` (`CALIBRATED`) — the setup notebook keeps calibrated rows on re-run. Optional
+`policy_id` loads the worker limit and allowed node types into `ref_sizing_policy`. Map jobs to profiles with a job tag
+`sizing_profile`, or name rules (`profile_rules`). Run as a principal that can read the system tables and the written
+tables; schedule monthly.
+
+## Lakemeter list-price agent only (legacy all-in-one)
 
 `setup_genie_lakemeter.py` is a Databricks notebook that does **everything** in one run —
 creates the schema, loads the pricing tables, creates all 29 functions, and builds the
@@ -62,60 +141,60 @@ import the folder and attach to any dedicated (or serverless) cluster, set the w
 
 | Notebook | Lang | Does | Key widgets |
 |---|---|---|---|
-| `01_load_tables.py` | Python | Create schema + load the 10 pricing tables from the workspace folder (`file:/Workspace/...`) | `catalog`, `schema`, `pricing_path` |
-| `02_create_functions.sql` | SQL | `USE CATALOG/SCHEMA` then create all 29 functions (unqualified) | `catalog`, `schema` |
+| `02_create_functions.sql` | SQL | `USE CATALOG/SCHEMA` then create all 29 list-price functions (unqualified) | `catalog`, `schema` |
 | `03_create_genie_space.py` | Python | Build the Genie Space (tables + functions + synonyms + instructions) | `catalog`, `schema`, `warehouse_id`, `space_title` |
 | `04_add_synonyms.py` | Python | Add/refresh column synonyms on an *existing* Space (GET → inject → PATCH) | `catalog`, `schema`, `space_id` |
-| `05_register_dcp_skill.py` | Python | Create the DCP estimation functions + register them as a Genie "skill" on an existing Space | `catalog`, `schema`, `space_id` |
-| `06_load_dcp_intake.py` | Python | Load a use-case **Excel/CSV intake** into `dcp_intake_components`, build the roll-up functions, and register the named-use-case skill on the Space | `catalog`, `schema`, `intake_path`, `space_id` |
+| `10_deploy_dcp_calculator.py` | Python | **DCP calculator:** deploy `dcp_estimator.py` as Unity Catalog functions, load named use cases, register the DCP skill on the Space | `catalog`, `schema`, `requests_path`, `space_id` |
+| `09_load_rate_card.py` | Python | **Rates:** refresh `ref_dbu_price_card` (Lakemeter + sizing) and `dcp_rate_card` (DCP) from `system.billing.account_prices` (governed) or `list_prices` (test) | `catalog`, `schema`, `rate_source`, `price_regions` |
+| `07_refresh_list_prices.sql` | SQL | Refresh the `dcp_list_price_rates` list-price snapshot (test workspaces) | `catalog`, `schema` |
+| `11_calibrate_sizing.py` | Python | **Sizing calibration:** measure throughput and start time per workload profile from job history; optional cluster-policy limits | `catalog`, `schema`, `lookback_days`, `mode`, `policy_id` |
+| `dcp_estimator.py` | Python module | The DCP Smart Estimation Calculator (v4.0.2). Source of truth for all DCP math | — |
+| `05_register_dcp_skill.py`, `06_load_dcp_intake.py`, `08_register_sizing_skill.py` | Python | *Superseded* SQL ports of the DCP math (v3.8) and sizing guidance. Notebook 10 retires them from the agent; kept for reference | — |
 
-Run order: 01 → 02 → 03 → (05) → (06). (03 already includes synonyms; 04 is only for enriching a Space made elsewhere. 05 adds the DCP workload skill; 06 adds named use cases from an Excel/CSV intake.)
+Pricing tables: load them with `setup_genie_dcp_agent.py` (step 1) or `sql/01_load_tables.sql`. Then run 02 → 03 → 10 → 09
+(09 again whenever rates change; schedule it). The modular notebooks do not install workload sizing or the governed
+Lakemeter price card — use `setup_genie_dcp_agent.py` for the complete agent.
 
-### DCP Smart Estimation skill
+### DCP calculator (the only source of DCP numbers)
 
-`sql/03_dcp_functions.sql` + notebook `05` add the **DCP** (scenario-based consumption projection)
-engine as Genie trusted-asset functions, ported from the *DCP Smart Estimation Calculator*:
+The DCP Smart Estimation Calculator (`notebooks/dcp_estimator.py`) does **all** DCP math. It runs, unchanged,
+inside the Unity Catalog Python function `dcp_calc`, so Genie, the SQL API and the notebook return the same
+numbers for the same request. Genie collects inputs, calls the calculator, and explains the result — it never
+calculates, picks or changes a rate.
 
-- `dcp_estimate(workload_type, quantity, runtime_low, runtime_expected, runtime_high, events_per_month, concurrent_users, planning_days)`
-  — returns LOW/EXPECTED/HIGH/STRESS monthly DBU + USD at **governed account rates**
-  (Jobs Serverless `$0.3465`/DBU, SQL Pro `$0.4235`/DBU). `workload_type` ∈
-  `CONTINUOUS_STREAMING` | `EVENT_DRIVEN_BATCH` | `SQL_REPORTING`.
-- `dcp_estimate_storage(daily_low, daily_expected, daily_high, planning_days)` — S3 retained-GB +
-  object costs and DataSync transfer sensitivity (S3 reported as a sensitivity, excluded from the total).
+```
+Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_details   (what Genie calls)
+                         └─► dcp_calc_run  (resolve use case or ad-hoc request, attach rate card)
+                               └─► dcp_calc  (UC Python function: dcp_estimator.py verbatim + calculator/dcp_adapter.py)
+                                     ├─ dcp_requests   named use cases: {"preset": "SEND_US01"} or a full EstimateRequest
+                                     └─ dcp_rate_card  the only rates used (account_prices / list_prices + AWS registry)
+```
 
-This is the **planning-floor** subset of the engine (governed-rate scenario math); the notebook's
-historical-calibration pass (which reads `system.billing.usage`) is not part of the Genie skill.
-Ask Genie: *"Give a DCP estimation for a continuous streaming workload."*
-`setup_genie_lakemeter.py` at the repo root does all of 01–03 in a single notebook.
+| Function | Returns |
+|---|---|
+| `dcp_calc_totals(p_use_case \| p_request, p_overrides)` | Per scenario: all-in and core monthly, annual, one-time, first year, DBU/USD, AWS, pending count, status, confidence |
+| `dcp_calc_line_items(..., p_scenario)` | Every priced or PENDING line: quantity, unit, rate, rate status/source, cost, treatment, evidence, formula |
+| `dcp_calc_details(...)` | Summary, confidence, pending items, compute decisions, assumptions, warnings, scope, rates used, errors |
+| `dcp_request(p_workload_type =>, p_runtime_hours_expected =>, p_concurrent_users =>, ...)` | Builds an ad-hoc request from stated values (blanks stay PENDING) |
 
-### Named use cases via an Excel/CSV intake
+- **Named use cases** live in `dcp_requests`: a calculator preset (`SEND_US01`, `AI_RAG_MODEL_API`) or an
+  `EstimateRequest` JSON (see `new_workload_template()` in the calculator; samples in `samples/requests/`).
+- **What-ifs**: `p_overrides` = preset inputs (`{"retained_storage_tb": 8, "migration_gb": 8000}`) or dotted paths
+  (`{"transfer.daily_gb_high": 12}`, `{"processing[C02].runs_per_month": 4}`).
+- **Rates**: `dcp_rate_card` mirrors the calculator's rate registry (provider, SKU, unit, region). Notebook 09 replaces
+  the Databricks DBU rows from `system.billing.account_prices` (`GOVERNED`) or, where account prices are not available,
+  `system.billing.list_prices` (`REFERENCE_ONLY`). No price → `PENDING`; there is no fallback.
+- **Validation**: bad input is rejected before any math with the calculator's field-level message
+  (e.g. `transfer.daily_gb_high must be a non-negative number (got -1)`).
+- **Upgrading the calculator**: replace `notebooks/dcp_estimator.py`, run `python3 calculator/build_sql.py` and
+  `python3 calculator/build_notebook.py`, re-run notebook 10, then the benchmark.
 
-Instead of describing each workload in chat, define a use case once in an **Excel/CSV intake**
-(`dcp_intake_template.csv`) and let Genie estimate it **by name**. Flow: *Excel/CSV →
-`dcp_intake_components` table → Genie* (Genie reads the table, not the file).
+### Benchmark
 
-Intake format — **one row per workload component**:
-
-| Column | For | Notes |
-|---|---|---|
-| `use_case_id` | all | e.g. `SEND_US01` (how you'll ask Genie) |
-| `use_case_name` | all | optional label |
-| `component_id` / `component_name` | all | unique id + description per component |
-| `workload_type` | all | `CONTINUOUS_STREAMING` \| `EVENT_DRIVEN_BATCH` \| `SQL_REPORTING` |
-| `quantity` | streaming | parallel copies (default 1) |
-| `runtime_low` / `runtime_expected` / `runtime_high` | batch | hours per run, per scenario |
-| `events_per_month` | batch | blank = scenario defaults 0/1/1/4 |
-| `concurrent_users` / `planning_days` | sql | concurrency + working days (default 22) |
-
-Leave cells blank where not relevant. Steps:
-1. Fill `dcp_intake_template.csv` in Excel (keep as `.csv`, or save `.xlsx` — the loader reads both;
-   `.xlsx` needs `%pip install openpyxl`).
-2. Put it in a workspace folder and run **`notebooks/06_load_dcp_intake.py`** (`intake_path`, `space_id`).
-3. Ask Genie: *"Give the DCP estimation for `<use_case_id>`"* → `dcp_estimate_usecase('<use_case_id>')`
-   rolls up all its components per scenario; `dcp_estimate_usecase_components('<use_case_id>')` gives
-   the per-component breakdown.
-
-`sql/04_dcp_usecase.sql` has the table DDL + roll-up functions for the manual/SQL path.
+`benchmark/run_benchmark.py` asks the agent the 20 benchmark questions (DCP workbook tab C) as written, compares
+each answer with the deployed calculator's output (agent pass = calculator called, figures reproduced to the cent,
+PENDING shown as PENDING), and separately checks the calculator engine at governed rates against the workbook's
+expected answers. `benchmark/fill_workbook.py` writes the results into a copy of the workbook.
 
 ## Reproduce manually (CLI / SQL editor)
 

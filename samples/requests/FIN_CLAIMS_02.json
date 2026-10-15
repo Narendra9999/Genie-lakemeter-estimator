@@ -1,0 +1,35 @@
+{
+ "use_case_id": "FIN_CLAIMS_02",
+ "use_case_name": "Claims Fraud Scoring",
+ "scenarios": [
+  "LOW",
+  "EXPECTED",
+  "HIGH",
+  "STRESS"
+ ],
+ "region": "US_EAST_1",
+ "processing": [
+  {
+   "component_id": "FIN_CLAIMS_02-C01",
+   "name": "Real-time claims ingestion and scoring",
+   "workload_type": "CONTINUOUS_STREAMING",
+   "quantity": 2
+  },
+  {
+   "component_id": "FIN_CLAIMS_02-C02",
+   "name": "Nightly model feature rebuild",
+   "workload_type": "EVENT_DRIVEN_BATCH",
+   "quantity": 1,
+   "runtime_hours_low": 2,
+   "runtime_hours_expected": 4,
+   "runtime_hours_high": 6,
+   "runs_per_month": 8
+  }
+ ],
+ "sql": {
+  "component_id": "FIN_CLAIMS_02-SQL",
+  "name": "Fraud analyst dashboards",
+  "concurrent_users": 35,
+  "working_days_per_month": 20
+ }
+}
