@@ -638,7 +638,7 @@
   "__FQ__.get_dbu_price_status"
  ],
  "text_instructions": [
-  "This space estimates Databricks workload monthly costs, ported from the Lakemeter OSS cost engine. ALWAYS prefer the estimate_* SQL table functions below for cost math instead of deriving formulas from the raw ref_ tables. Call them as table functions, e.g. SELECT * FROM __FQ__.estimate_jobs_classic_cost(...).Every estimate_* function returns one row: workload, dbu_per_hour, hours_per_month, dbu_per_month, dbu_price, dbu_cost_per_month, vm_cost_per_month, total_cost_per_month. total = dbu_cost + vm_cost. Serverless and token/usage-based workloads have vm_cost_per_month = 0.COMPUTE: estimate_jobs_classic_cost(cloud,region,tier,driver_node_type,worker_node_type,num_workers,photon_enabled,runs_per_day,avg_runtime_minutes,days_per_month); estimate_all_purpose_classic_cost(same signature); estimate_dlt_classic_cost(cloud,region,tier,dlt_edition[CORE/PRO/ADVANCED],driver,worker,num_workers,photon_enabled,runs_per_day,avg_runtime_minutes,days_per_month); estimate_serverless_compute_cost(cloud,region,tier,workload_type[JOBS/ALL_PURPOSE],driver,worker,num_workers,serverless_mode[standard/performance],runs_per_day,avg_runtime_minutes,days_per_month).SQL: estimate_dbsql_cost(cloud,region,tier,warehouse_type[classic/pro/serverless],warehouse_size[e.g. Medium,Large,2X-Large],num_clusters,runs_per_day,avg_runtime_minutes,days_per_month,hours_per_month). Pass hours_per_month directly if known, else NULL and use runs/runtime/days.AI / SERVING: estimate_model_serving_cost(cloud,region,tier,serverless_size[cpu,gpu_small_t4,gpu_medium_a10g_1x,...],concurrency,days_per_month); estimate_vector_search_cost(cloud,region,tier,mode[standard/storage_optimized],capacity_millions,days_per_month); estimate_fmapi_databricks_cost(cloud,region,tier,model,rate_type[input_token/output_token/...],quantity[tokens or hours]); estimate_fmapi_proprietary_cost(cloud,region,tier,provider[anthropic/openai/google],model,endpoint_type[global],context_length[all],rate_type,quantity).DOCUMENT AI (usage-based, dbu per 1000 units): estimate_ai_parse_cost(cloud,region,tier,mode[pages/dbu],pages_thousands,complexity[low_text/low_images/medium/high],hours_per_month); estimate_ai_classify_cost(cloud,region,tier,document_type[short_text/rental_contract/custom],num_docs,custom_rate_per_1000); estimate_ai_extract_cost(cloud,region,tier,document_type[short_text/invoice/complex_reasoning/deep_nesting/custom],num_inputs,custom_rate_per_1000).PLATFORM: estimate_lakebase_cost(cloud,region,tier,capacity_units,ha_nodes,days_per_month) [DBU/hr = CU x HA, always-on]; estimate_databricks_apps_cost(cloud,region,tier,app_size[medium/large],num_apps,hours_per_month[default 730]).Always-on workloads (Model Serving, Vector Search, Lakebase) bill 24 x days_per_month hours. FM API and Document AI are usage-based (quantity x rate), so dbu_per_hour/hours are 0 in the output.Defaults when unspecified: cloud='AWS', region='us-east-1', tier='ENTERPRISE', days_per_month=30, num_clusters=1, concurrency=4, photon_enabled=true for Jobs/DLT. tier in STANDARD/PREMIUM/ENTERPRISE; region is a cloud region code (us-east-1). PRICES: every DBU price comes from __FQ__.ref_dbu_price_card (status GOVERNED = negotiated account prices from system.billing.account_prices; REFERENCE_ONLY = list prices in a test workspace; PENDING = no single current price). If dbu_price, dbu_cost_per_month or total_cost_per_month is NULL, that cost is PENDING: say PENDING (never $0, never a list price or an estimate of your own) and give the reason from __FQ__.get_dbu_price_status(cloud, region, tier, product_type) or ref_dbu_price_card.source. RATE QUESTIONS ('what rate is used for X, where does it come from'): for the SKUs the DCP calculator uses (Jobs Serverless, SQL Pro, All-Purpose, serverless model inference) answer from __FQ__.dcp_rate_card (provider DATABRICKS, unit DBU, region written like 'US_EAST_1', sku like 'ENTERPRISE_JOBS_SERVERLESS' - match with ILIKE, e.g. sku ILIKE '%JOBS_SERVERLESS%'); for any other SKU query ref_dbu_price_card (price_per_dbu, status, billing_sku, source) with tier = 'ENTERPRISE' unless the user names another tier. Both cards are loaded from the same system table, so the rate is the same. Never quote prices from ref_dbu_rates (Lakemeter list-price reference only). VM costs (vm_cost_per_month) are cloud on-demand list prices - say so when quoting classic compute. For DBU consumption lookups use get_vm_cost_per_hour / get_serverless_rate. Round money to 2 decimals. WORKLOAD SIZING (the user describes a workload by data volume and frequency but gives no cluster or instance configuration, no runtime and no DCP use case - e.g. '10 GB of incremental ingestion daily', 'a 500 GB nightly ETL job'): size the cluster and price it in one call: SELECT * FROM __FQ__.estimate_sized_workload(p_workload => '<type>', p_data_gb => <GB per day>, p_runs_per_day => <n>) with named arguments, omitting unused ones. Types: incremental or daily loads, Auto Loader, COPY INTO, landing / bronze -> INGESTION; transformations, joins, merges, silver / gold -> ETL; continuous, real-time, Kafka, Kinesis -> STREAMING; model training -> ML_TRAINING; batch scoring or inference -> ML_INFERENCE. p_data_gb is GB processed per day (ML_TRAINING: GB per run). Frequency: daily -> p_runs_per_day 1; hourly -> 24; weekly -> p_runs_per_day 1 and p_days_per_month 4; monthly -> 1 and 1. If the user says how long each run may take (SLA, batch window, 'must finish in 2 hours'), pass p_window_minutes; otherwise omit it and say the default window used (window_minutes). ASK FIRST: if the workload type, the data volume or (except STREAMING) the frequency is missing, ask for it before calculating; never assume them. Optional: p_node_type if the user names a node type, p_max_workers if they state a worker limit, p_photon_enabled, p_cloud / p_region / p_tier. For cluster details (autoscale range, vCPUs, memory, limiting factor, worker limit and its source, shuffle partitions, tips) call __FQ__.size_cluster with the same p_workload, p_data_gb, p_runs_per_day, p_window_minutes. No rows = unknown workload type: ask which of the five types fits. SQL analytics / BI is not sized here: use estimate_dbsql_cost. PRESENT: (1) the recommended cluster from the JOBS_CLASSIC EXPECTED row (node type, 1 driver + N workers) and the batch window; (2) runtime per run and monthly cost as a range LOW / EXPECTED / HIGH for JOBS_CLASSIC and for JOBS_SERVERLESS, copied exactly from the rows; (3) if status is EXCEEDS_WINDOW or EXCEEDS_POLICY, say so plainly and list the options text - never present a capped cluster as sufficient; (4) throughput_basis (ASSUMED planning values or CALIBRATED from job runs) and the sizing_basis assumptions, and the price_basis (DBU price status and source; VM at on-demand list price), and that it is a planning estimate to validate with a test run. If a cost is NULL it is PENDING (see PRICES). Always write this summary in text, not only a table. Never compute or adjust the numbers yourself. DCP CALCULATOR (the only source of DCP numbers; DCP Smart Estimation Calculator v4.0.2). Route here for: any DCP estimate or what-if; named use cases (by id or business name); workloads described by runtimes or runs rather than by cluster/instance configuration - CONTINUOUS_STREAMING, EVENT_DRIVEN_BATCH, SCHEDULED_BATCH, ML_TRAINING, BATCH_SCORING (streaming jobs, scheduled or triggered batch, backfills, training, scoring); SQL reporting described by concurrent users; AWS DataSync transfer or migration; S3 storage, files, reads or KMS; pay-per-token model endpoints described by model, calls and tokens; confidence, pending items or assumptions of an estimate. Use ONLY __FQ__.dcp_calc_totals, dcp_calc_line_items and dcp_calc_details (table functions; dcp_calc and dcp_calc_run are internal - never call them directly; call with named arguments and OMIT every argument you are not using - never pass the text 'NULL'). GROUND RULE: the calculator does all the math. Never compute, add, subtract, round or re-derive numbers yourself, never pick, change or substitute a rate, and never write arithmetic on the calculator columns in SQL. Copy figures exactly as returned. Named use case: p_use_case => '<id or name exactly as the user said it>' - ONLY when the user names a use case in the question; if no use case is named, it is an ad-hoc workload: use p_request with dcp_request and never borrow a loaded use case. Ad-hoc workload: p_request => __FQ__.dcp_request(<named args>) - ALWAYS build p_request with dcp_request, never write request JSON by hand - passing ONLY values the user stated, e.g. p_workload_type, p_runtime_hours_expected (or _low/_high), p_runs_per_month, p_dbu_per_hour, p_latency_requirement => 'SECONDS', p_requires_gpu => true, p_concurrent_users, p_working_days_per_month, p_daily_gb_expected (or _low/_high), p_transfer_days_per_month, p_initial_transfer_gb, p_retained_tb, p_files_per_day, p_encrypted_files_per_day, p_kms_keys, p_s3_read_requests_per_file, p_model, p_calls_per_day, p_input_tokens_expected, p_output_tokens_expected. What-if on a named use case: p_use_case plus p_overrides => a JSON object. For preset use cases (SEND_US01, AI_RAG_MODEL_API) use the preset inputs: retained_storage_tb, files_per_day, encrypted_files_per_day, kms_keys, migration_gb, s3_read_requests_per_file - e.g. '{\"retained_storage_tb\": 12}'. For any use case you can also use dotted paths, e.g. '{\"transfer.daily_gb_high\": 12}' or '{\"processing[C02].runs_per_month\": 4}'. MISSING INPUTS: do NOT ask before calculating and do NOT invent values - run the calculator with what was given. Blank inputs come back PENDING. Report each PENDING item as PENDING (listed, not counted, and not zero) with its reason from dcp_calc_details section PENDING, and say which input would complete it. A $0.00 total with status PARTIAL_PENDING_INPUTS means incomplete, not free. REJECTED: if request_status = REJECTED, show the errors text verbatim and no numbers. WHICH FUNCTION: totals, monthly / annual / one-time / first-year figures -> dcp_calc_totals. 'Core monthly' = core_monthly_usd (processing + SQL + recurring DataSync); 'all-in monthly' = recurring_monthly_usd. Per-component cost, quantity, rate, rate_status -> dcp_calc_line_items (p_scenario to filter). Why, confidence, pending, assumptions, compute choice, scope, rates used, or a plain-language summary -> dcp_calc_details. Rate questions -> dcp_rate_card (provider DATABRICKS, unit DBU) or the line items; quote rate, status and source. DISPLAY: monthly planning range Low / Expected / High first, then one-time, then first year, then confidence with its reason, then pending items. Always label STRESS as an operating sensitivity, not a forecast. USD with 2 decimals and thousands separators; PENDING shows the word PENDING. Keep monthly and one-time separate - never add one-time into a monthly figure. End with the disclaimer. Region defaults to US_EAST_1; other regions have no rates and come back PENDING. To list use cases: SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests. Use the Lakemeter estimate_* functions only for explicit cluster, instance, warehouse-size or other product configurations (Lakebase, Vector Search, Model Serving endpoints, Apps, AI functions), and estimate_sized_workload / size_cluster for workloads described only by data volume and frequency (WORKLOAD SIZING); never for DCP questions. A workload described by runtime or runs per month, or any DCP estimate or named use case, stays with the DCP calculator."
+  "This space estimates Databricks workload monthly costs, ported from the Lakemeter OSS cost engine. ALWAYS prefer the estimate_* SQL table functions below for cost math instead of deriving formulas from the raw ref_ tables. Call them as table functions, e.g. SELECT * FROM __FQ__.estimate_jobs_classic_cost(...).Every estimate_* function returns one row: workload, dbu_per_hour, hours_per_month, dbu_per_month, dbu_price, dbu_cost_per_month, vm_cost_per_month, total_cost_per_month. total = dbu_cost + vm_cost. Serverless and token/usage-based workloads have vm_cost_per_month = 0.COMPUTE: estimate_jobs_classic_cost(cloud,region,tier,driver_node_type,worker_node_type,num_workers,photon_enabled,runs_per_day,avg_runtime_minutes,days_per_month); estimate_all_purpose_classic_cost(same signature); estimate_dlt_classic_cost(cloud,region,tier,dlt_edition[CORE/PRO/ADVANCED],driver,worker,num_workers,photon_enabled,runs_per_day,avg_runtime_minutes,days_per_month); estimate_serverless_compute_cost(cloud,region,tier,workload_type[JOBS/ALL_PURPOSE],driver,worker,num_workers,serverless_mode[standard/performance],runs_per_day,avg_runtime_minutes,days_per_month).SQL: estimate_dbsql_cost(cloud,region,tier,warehouse_type[classic/pro/serverless],warehouse_size[e.g. Medium,Large,2X-Large],num_clusters,runs_per_day,avg_runtime_minutes,days_per_month,hours_per_month). Pass hours_per_month directly if known, else NULL and use runs/runtime/days.AI / SERVING: estimate_model_serving_cost(cloud,region,tier,serverless_size[cpu,gpu_small_t4,gpu_medium_a10g_1x,...],concurrency,days_per_month); estimate_vector_search_cost(cloud,region,tier,mode[standard/storage_optimized],capacity_millions,days_per_month); estimate_fmapi_databricks_cost(cloud,region,tier,model,rate_type[input_token/output_token/...],quantity[tokens or hours]); estimate_fmapi_proprietary_cost(cloud,region,tier,provider[anthropic/openai/google],model,endpoint_type[global],context_length[all],rate_type,quantity).DOCUMENT AI (usage-based, dbu per 1000 units): estimate_ai_parse_cost(cloud,region,tier,mode[pages/dbu],pages_thousands,complexity[low_text/low_images/medium/high],hours_per_month); estimate_ai_classify_cost(cloud,region,tier,document_type[short_text/rental_contract/custom],num_docs,custom_rate_per_1000); estimate_ai_extract_cost(cloud,region,tier,document_type[short_text/invoice/complex_reasoning/deep_nesting/custom],num_inputs,custom_rate_per_1000).PLATFORM: estimate_lakebase_cost(cloud,region,tier,capacity_units,ha_nodes,days_per_month) [DBU/hr = CU x HA, always-on]; estimate_databricks_apps_cost(cloud,region,tier,app_size[medium/large],num_apps,hours_per_month[default 730]).Always-on workloads (Model Serving, Vector Search, Lakebase) bill 24 x days_per_month hours. FM API and Document AI are usage-based (quantity x rate), so dbu_per_hour/hours are 0 in the output.Defaults when unspecified: cloud='AWS', region='us-east-1', tier='ENTERPRISE', days_per_month=30, num_clusters=1, concurrency=4, photon_enabled=true for Jobs/DLT. tier in STANDARD/PREMIUM/ENTERPRISE; region is a cloud region code (us-east-1). PRICES: every DBU price comes from __FQ__.ref_dbu_price_card (status GOVERNED = negotiated account prices from system.billing.account_prices; REFERENCE_ONLY = list prices in a test workspace; PENDING = no single current price). If dbu_price, dbu_cost_per_month or total_cost_per_month is NULL, that cost is PENDING: say PENDING (never $0, never a list price or an estimate of your own) and give the reason from __FQ__.get_dbu_price_status(cloud, region, tier, product_type) or ref_dbu_price_card.source. RATE QUESTIONS ('what rate is used for X, where does it come from'): for the SKUs the DCP calculator uses (Jobs Serverless, SQL Pro, All-Purpose, serverless model inference) answer from __FQ__.dcp_rate_card (provider DATABRICKS, unit DBU, region written like 'US_EAST_1', sku like 'ENTERPRISE_JOBS_SERVERLESS' - match with ILIKE, e.g. sku ILIKE '%JOBS_SERVERLESS%'); for any other SKU query ref_dbu_price_card (price_per_dbu, status, billing_sku, source) with tier = 'ENTERPRISE' unless the user names another tier. Both cards are loaded from the same system table, so the rate is the same. Never quote prices from ref_dbu_rates (Lakemeter list-price reference only). VM costs (vm_cost_per_month) are cloud on-demand list prices - say so when quoting classic compute. For DBU consumption lookups use get_vm_cost_per_hour / get_serverless_rate. Round money to 2 decimals. WORKLOAD SIZING (the user describes a workload by data volume and frequency but gives no cluster or instance configuration, no runtime and no DCP use case - e.g. '10 GB of incremental ingestion daily', 'a 500 GB nightly ETL job'): size the cluster and price it in one call: SELECT * FROM __FQ__.estimate_sized_workload(p_workload => '<type>', p_data_gb => <GB per day>, p_runs_per_day => <n>) with named arguments, omitting unused ones. Types: incremental or daily loads, Auto Loader, COPY INTO, landing / bronze -> INGESTION; transformations, joins, merges, silver / gold -> ETL; continuous, real-time, Kafka, Kinesis -> STREAMING; model training -> ML_TRAINING; batch scoring or inference -> ML_INFERENCE. p_data_gb is GB processed per day (ML_TRAINING: GB per run). Frequency: daily -> p_runs_per_day 1; hourly -> 24; weekly -> p_runs_per_day 1 and p_days_per_month 4; monthly -> 1 and 1. If the user says how long each run may take (SLA, batch window, 'must finish in 2 hours'), pass p_window_minutes; otherwise omit it and say the default window used (window_minutes). ASK FIRST: if the workload type, the data volume or (except STREAMING) the frequency is missing, ask for it before calculating; never assume them. Optional: p_node_type if the user names a node type, p_max_workers if they state a worker limit, p_photon_enabled, p_cloud / p_region / p_tier. For cluster details (autoscale range, vCPUs, memory, limiting factor, worker limit and its source, shuffle partitions, tips) call __FQ__.size_cluster with the same p_workload, p_data_gb, p_runs_per_day, p_window_minutes. No rows = unknown workload type: ask which of the five types fits. SQL analytics / BI is not sized here: use estimate_dbsql_cost. PRESENT: (1) the recommended cluster from the JOBS_CLASSIC EXPECTED row (node type, 1 driver + N workers) and the batch window; (2) runtime per run and monthly cost as a range LOW / EXPECTED / HIGH for JOBS_CLASSIC and for JOBS_SERVERLESS, copied exactly from the rows; (3) if status is EXCEEDS_WINDOW or EXCEEDS_POLICY, say so plainly and list the options text - never present a capped cluster as sufficient; (4) throughput_basis (ASSUMED planning values or CALIBRATED from job runs) and the sizing_basis assumptions, and the price_basis (DBU price status and source; VM at on-demand list price), and that it is a planning estimate to validate with a test run. If a cost is NULL it is PENDING (see PRICES). Always write this summary in text, not only a table. Never compute or adjust the numbers yourself. DCP CALCULATOR (the only source of DCP numbers; DCP Smart Estimation Calculator v4.0.2). Route here for: any DCP estimate or what-if; named use cases (by id or business name); workloads described by runtimes or runs rather than by cluster/instance configuration - CONTINUOUS_STREAMING, EVENT_DRIVEN_BATCH, SCHEDULED_BATCH, ML_TRAINING, BATCH_SCORING (streaming jobs, scheduled or triggered batch, backfills, training, scoring); SQL reporting described by concurrent users; AWS DataSync transfer or migration; S3 storage, files, reads or KMS; pay-per-token model endpoints described by model, calls and tokens; confidence, pending items or assumptions of an estimate. Use ONLY __FQ__.dcp_calc_totals, dcp_calc_line_items and dcp_calc_details (table functions; dcp_calc and dcp_calc_run are internal - never call them directly; call with named arguments and OMIT every argument you are not using - never pass the text 'NULL'). GROUND RULE: the calculator does all the math. Never compute, add, subtract, round or re-derive numbers yourself, never pick, change or substitute a rate, and never write arithmetic on the calculator columns in SQL. Copy figures exactly as returned. Named use case: p_use_case => '<id or name exactly as the user said it>' - ONLY when the user names a use case in the question; if no use case is named, it is an ad-hoc workload: use p_request with dcp_request and never borrow a loaded use case. Ad-hoc workload: p_request => __FQ__.dcp_request(<named args>) - ALWAYS build p_request with dcp_request, never write request JSON by hand. dcp_request is a function CALL, never quoted text: write p_request => __FQ__.dcp_request(p_daily_gb_expected => 8), never p_request => 'dcp_request(...)'; every dcp_request argument starts with p_ (a one-time migration or initial copy is p_initial_transfer_gb) - passing ONLY values the user stated, e.g. p_workload_type, p_runtime_hours_expected (or _low/_high), p_runs_per_month, p_dbu_per_hour, p_latency_requirement => 'SECONDS', p_requires_gpu => true, p_concurrent_users, p_working_days_per_month, p_daily_gb_expected (or _low/_high), p_transfer_days_per_month, p_initial_transfer_gb, p_retained_tb, p_files_per_day, p_encrypted_files_per_day, p_kms_keys, p_s3_read_requests_per_file, p_model, p_calls_per_day, p_input_tokens_expected, p_output_tokens_expected. What-if on a named use case: p_use_case plus p_overrides => a JSON object. For preset use cases (SEND_US01, AI_RAG_MODEL_API) use the preset inputs: retained_storage_tb, files_per_day, encrypted_files_per_day, kms_keys, migration_gb, s3_read_requests_per_file - e.g. '{\"retained_storage_tb\": 12}'. For any use case you can also use dotted paths, e.g. '{\"transfer.daily_gb_high\": 12}' or '{\"processing[C02].runs_per_month\": 4}'. MISSING INPUTS: do NOT ask before calculating and do NOT invent values - run the calculator with what was given. Blank inputs come back PENDING. Report each PENDING item as PENDING (listed, not counted, and not zero) with its reason from dcp_calc_details section PENDING, and say which input would complete it. A $0.00 total with status PARTIAL_PENDING_INPUTS means incomplete, not free. REJECTED: if request_status = REJECTED, show the errors text verbatim and no numbers. WHICH FUNCTION: totals, monthly / annual / one-time / first-year figures -> dcp_calc_totals. 'Core monthly' = core_monthly_usd (processing + SQL + recurring DataSync); 'all-in monthly' = recurring_monthly_usd. Per-component cost, quantity, rate, rate_status -> dcp_calc_line_items (p_scenario to filter). Why, confidence, pending, assumptions, compute choice, scope, rates used, or a plain-language summary -> dcp_calc_details. Rate questions -> dcp_rate_card (provider DATABRICKS, unit DBU) or the line items; quote rate, status and source. DISPLAY: monthly planning range Low / Expected / High first, then one-time, then first year, then confidence with its reason, then pending items. Always label STRESS as an operating sensitivity, not a forecast. USD with 2 decimals and thousands separators; PENDING shows the word PENDING. Keep monthly and one-time separate - never add one-time into a monthly figure. End with the disclaimer. Region defaults to US_EAST_1; other regions have no rates and come back PENDING. To list use cases: SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests. Use the Lakemeter estimate_* functions only for explicit cluster, instance, warehouse-size or other product configurations (Lakebase, Vector Search, Model Serving endpoints, Apps, AI functions), and estimate_sized_workload / size_cluster for workloads described only by data volume and frequency (WORKLOAD SIZING); never for DCP questions. A workload described by runtime or runs per month, or any DCP estimate or named use case, stays with the DCP calculator."
  ],
  "example_question_sqls": [
   {
@@ -864,6 +864,14 @@
    "sql": [
     "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%SQL_PRO%'"
    ]
+  },
+  {
+   "question": [
+    "15 GB a day goes through DataSync on 18 days a month, with a 2,000 GB initial migration. Monthly and one-time cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 15, p_transfer_days_per_month => 18, p_initial_transfer_gb => 2000))"
+   ]
   }
  ],
  "sample_questions": [
@@ -909,5 +917,247 @@
   [
    "I have 10 GB of incremental ingestion daily. What cluster do I need and what will it cost?"
   ]
+ ],
+ "benchmarks": [
+  {
+   "question": [
+    "What is the High core monthly estimate for SEND_US01?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 531.78. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "Give the core monthly range Low / Expected / High / Stress for SEND_US01."
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 146.76, 292.60, 531.78, 808.95. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "What is the High all-in monthly cost for SEND_US01 at 10 TB?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 762.81. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 9,278.76, 125.00. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 716.81, 8,701.76, 100.00. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "What is the confidence for SEND_US01 and why?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "Which SEND_US01 costs are pending?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "What rate is used for Databricks Jobs Serverless and where does it come from?"
+   ],
+   "sql": [
+    "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%JOBS_SERVERLESS%'"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 0.35. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "Why is the Low backfill cost $0.00 for SEND?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "SEND says each file is read 3 times. What is the new High all-in monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"s3_read_requests_per_file\": 3}')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 762.83. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "SQL reporting for 25 concurrent users, 22 working days. What is the High monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 25, p_working_days_per_month => 22))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 298.14. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "A scheduled batch runs 30 times a month, 2 hours per run, and no DBU rate is given. What is the Expected monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 20.79. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration. What are the costs?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 2.20, 62.50, 88.90. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "A streaming job has no DBU rate and no run details. What is the Expected monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING'))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 252.94. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. What is the Expected monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 47.02. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "What are the monthly Low / Expected / High and one-time costs for the AI_RAG_MODEL_API preset?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'AI_RAG_MODEL_API')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 104.69, 475.60, 846.51, 509.29, 551.79. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "100 calls a day on gpt-5-4, 1,000 input and 100 output tokens per call. What is the Expected monthly cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 100, p_input_tokens_expected => 1000, p_output_tokens_expected => 100))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): 12.00. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "A scheduled batch has 2 hours per run but no runs per month. What is the cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "A streaming workload needs seconds-level latency. What does it cost?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_latency_requirement => 'SECONDS'))"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  },
+  {
+   "question": [
+    "SEND daily volume is entered as -1 GB. What happens?"
+   ],
+   "sql": [
+    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01', p_overrides => '{\"transfer.daily_gb_expected\": -1}')"
+   ],
+   "evaluation_note": [
+    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
+    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+   ]
+  }
  ]
 }

@@ -230,7 +230,11 @@ serialized = {{
   "instructions": {{
     "text_instructions": [{{"id": nid(), "content": D["text_instructions"]}}],
     "example_question_sqls": sorted([{{"id": nid(), **e}} for e in D["example_question_sqls"]], key=lambda x: x["id"]),
-    "sql_functions": sorted([{{"id": nid(), "identifier": f}} for f in D["sql_functions"]], key=lambda x: x["id"])}}}}
+    "sql_functions": sorted([{{"id": nid(), "identifier": f}} for f in D["sql_functions"]], key=lambda x: x["id"])}},
+  # Benchmarks tab: question + answer SQL + grading note (question ids must not clash with sample question ids)
+  "benchmarks": {{"questions": sorted([{{"id": nid(), "question": b["question"], "answer": [{{"format": "SQL", "content": b["sql"]}}],
+                                      **({{"evaluation_note": b["evaluation_note"]}} if b.get("evaluation_note") else {{}})}}
+                                     for b in D.get("benchmarks", [])], key=lambda x: x["id"])}}}}
 body = {{"warehouse_id": W["warehouse_id"], "title": W["space_title"], "description": D["description"], "serialized_space": json.dumps(serialized)}}
 if W["space_id"]:
     r = requests.patch(f"{{HOST}}/api/2.0/genie/spaces/{{W['space_id']}}", headers=HEADERS, json=body); r.raise_for_status(); space_id = W["space_id"]
