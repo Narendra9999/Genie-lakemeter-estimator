@@ -1,8 +1,8 @@
 # Lakemeter → Genie Cost Estimator
 
-Exposes Lakemeter OSS's Databricks cost-estimation logic natively in Unity Catalog +
-a Genie Space, so users can ask workload-cost questions in natural language — no app,
-no Marketplace, no Lakebase required. Built for the SEG/FEVM simulation.
+A Genie Agent that answers Databricks cost questions in natural language: DCP Smart Estimation (the DCP calculator,
+embedded unchanged), workload sizing, and Lakemeter OSS cost estimates for configured workloads — all as Unity Catalog
+functions at governed account rates. No app, Marketplace or Lakebase required.
 
 ## Install in one notebook (recommended)
 
@@ -13,7 +13,8 @@ It is self-contained — the only other thing to upload is the `pricing_data/` f
 
 1. Import `setup_genie_dcp_agent.py` and the `pricing_data/` folder into the same workspace folder
    (or a Git folder cloned from this repo).
-2. Attach to a UC-enabled cluster (DBR 13.3 LTS+) or serverless, set the widgets, **Run all**:
+2. Attach to a UC-enabled cluster (DBR 13.3 LTS+) or serverless and run the first cell: it creates the parameter
+   widgets at the top of the notebook. Fill them in, then **Run all**:
 
 | Widget | Value |
 |---|---|
@@ -41,7 +42,8 @@ python3 calculator/build_sql.py && python3 calculator/build_notebook.py && pytho
 
 | Job (resource key) | Notebook | Schedule | Does |
 |---|---|---|---|
-| `setup_agent` | `setup_genie_dcp_agent.py` | On demand | Builds or updates the whole agent; run on install and after any change |
+| `setup_agent` | `setup_genie_dcp_agent.py`, then `notebooks/12_grant_access.py` | On demand | Builds or updates the whole agent, then grants the agent user groups access; run on install and after any change |
+| `grant_access` | `notebooks/12_grant_access.py` | On demand | Grants (or re-grants) the agent user groups access; run after changing `user_groups` |
 | `rate_refresh` | `notebooks/09_load_rate_card.py` | Daily 05:00 UTC | Reloads `dcp_rate_card` and `ref_dbu_price_card` from `system.billing` |
 | `sizing_calibration` | `notebooks/11_calibrate_sizing.py` | Monthly, 1st 06:00 UTC | Calibrates sizing from job history (`DRY_RUN` by default; set `calibration_mode=APPLY` once the report looks right) |
 
@@ -52,16 +54,36 @@ Jobs run on serverless compute. Targets:
 | `dev` (default) | Try it in your own folder | Job names are prefixed `[dev <user>]`; schedules are paused |
 | `prod` | Production | Jobs run as `run_as_service_principal`; files go to the deployer's folder (deploy from CI as the service principal) |
 
+**1. Set the parameters once in `dab-config.yml`.** Copy the example and fill it in. `dab-config.yml` is git-ignored, so
+workspace hosts, catalogs, warehouse and service-principal ids stay out of the repo:
+
 ```bash
-# validate, deploy, then build the agent
-databricks bundle validate --strict -t prod --var="catalog=<catalog>" --var="warehouse_id=<id>" \
-  --var="run_as_service_principal=<application id>" --var="user_group=<agent users group>"
-databricks bundle deploy -t prod  --var=... (same values)
-databricks bundle run setup_agent -t prod --var=... (same values)
+cp dab-config.example.yml dab-config.yml     # then edit: one block per target (dev, prod)
 ```
 
-To avoid repeating `--var`, put the values in `.databricks/bundle/<target>/variable-overrides.json`
-(e.g. `{"catalog": "dcp_finops", "warehouse_id": "...", "user_group": "..."}`).
+```yaml
+targets:
+  prod:
+    workspace:
+      host: https://<prod-workspace-host>     # or: profile: <CLI profile>
+    variables:
+      catalog: <catalog>
+      warehouse_id: <SQL warehouse id>
+      user_groups: "<agent users group>"     # one or more, comma-separated
+      run_as_service_principal: <service principal application id>
+      # ...every other variable is optional; the example file lists them with their defaults
+```
+
+**2. Validate, deploy and build the agent** — no `--var` needed:
+
+```bash
+databricks bundle validate --strict -t prod
+databricks bundle deploy -t prod
+databricks bundle run setup_agent -t prod
+```
+
+`databricks.yml` includes `dab-config.yml` automatically (it's optional, so the bundle also works with `--var` alone).
+A `--var="name=value"` on the command line overrides the file for one run.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -70,19 +92,33 @@ To avoid repeating `--var`, put the values in `.databricks/bundle/<target>/varia
 | `rate_source` | `ACCOUNT_PRICES` | `LIST_PRICES` for workspaces without account prices |
 | `price_regions` / `sku_region` | `us-east-1` / `US_EAST_N_VIRGINIA` | Regions in the Lakemeter price card / DCP region suffix |
 | `space_id`, `space_title` | blank / `Lakemeter Cost Estimator` | Which agent to update (blank id = the agent with this title, else create) |
-| `user_group` | blank | Group granted access to the agent and schema |
+| `user_groups` | blank | Agent user groups, comma-separated (see **Agent access** below) |
+| `revoke_others` | `false` | `true` = groups not in `user_groups` lose their schema grants |
 | `requests_path` | blank | Extra use-case request JSON folder |
 | `load_pricing_tables` | `true` | `false` for faster setup re-runs |
 | `calibration_mode`, `policy_id` | `DRY_RUN`, blank | Calibration mode; job cluster policy for the worker limit |
 | `schedule_pause_status` | `UNPAUSED` | `PAUSED` to stop the schedules |
 | `run_as_service_principal` | — (required for `prod`) | Application id the prod jobs run as |
 
+**Agent access.** Every group in `user_groups` gets, from `notebooks/12_grant_access.py`:
+
+| Object | Privilege | Why |
+|---|---|---|
+| Catalog | `USE CATALOG` | Reach the agent schema |
+| Agent schema | `USE SCHEMA`, `SELECT`, `EXECUTE` | Read the agent's tables and run its functions; inherited by every table and function, including ones rebuilt later |
+| Genie agent | `CAN RUN` | Ask the agent questions in the Genie UI and through Genie MCP / Copilot |
+| SQL warehouse | `CAN USE` | Optional: the agent already lends its warehouse to users |
+
+Use account-level groups (Unity Catalog can't grant to workspace-local groups; the all-users group is `account users`).
+Users need no access to `system` tables. Who can view or run the bundle's *jobs* is separate: set `permissions` for the
+target in `dab-config.yml` (see the example).
+
 The service principal needs `SELECT` on `system.billing.account_prices` (and, for calibration, `system.lakeflow`,
 `system.compute`, `system.billing.usage`, `system.access.table_lineage`), and create/modify on the agent schema.
 
 ## What it creates
 
-In `fevm_catalog_naren.lakemeter` (change the catalog/schema to retarget):
+In `<catalog>.<schema>`:
 
 - **10 reference tables** (`ref_*`) loaded from the pricing CSVs bundled in this repo
   (`pricing_data/*.csv`, from Lakemeter OSS): DBU rates, instance DBU rates, VM costs (~111K rows),
@@ -104,8 +140,11 @@ In `fevm_catalog_naren.lakemeter` (change the catalog/schema to retarget):
     `estimate_fmapi_databricks_cost`, `estimate_fmapi_proprietary_cost`
   - Document AI: `estimate_ai_parse_cost`, `estimate_ai_classify_cost`, `estimate_ai_extract_cost`
   - Platform: `estimate_lakebase_cost`, `estimate_databricks_apps_cost`
-- A **Genie Space** ("Lakemeter Cost Estimator") over the tables, with the functions
-  registered as trusted assets, plus instructions, example SQL, and sample questions.
+- **DCP calculator** functions (`dcp_calc`, `dcp_calc_run`, `dcp_calc_totals`, `dcp_calc_line_items`,
+  `dcp_calc_details`, `dcp_request`), **workload sizing** (`size_cluster`, `estimate_sized_workload`) and
+  `get_dbu_price_status`, with their tables (`dcp_requests`, `dcp_rate_card`, `ref_dbu_price_card`, `ref_sizing_*`).
+- A **Genie agent** over the tables, with the functions registered as trusted assets, plus instructions, example SQL,
+  sample questions and the 20 DCP workbook questions in its Benchmarks tab.
 
 Cost model (ported from Lakemeter's Postgres engine):
 `monthly_cost = dbu_per_hour × hours_per_month × dbu_price + vm_cost`. Serverless
@@ -130,7 +169,7 @@ The DCP calculator's `dcp_rate_card` is loaded from the same table, so all skill
 
 `sql/08_workload_sizing.sql` turns a described workload (type, GB per day, runs per day, optional batch window) into a
 cluster and prices it with the functions above. Example: *"10 GB of incremental ingestion daily"* → 1 driver + 1 ×
-m5d.xlarge, 13 / 20 / 35 min per run → $4.73 / $7.28 / $12.74 per month on classic Jobs (Low / Expected / High; FEVM list prices).
+m5d.xlarge, 13 / 20 / 35 min per run → $4.73 / $7.28 / $12.74 per month on classic Jobs (Low / Expected / High, at list prices).
 
 | Function / table | Does |
 |---|---|
@@ -159,46 +198,27 @@ percentile; a hold-out backtest (older ⅔ → newest ⅓) reports the error aga
 `sizing_profile`, or name rules (`profile_rules`). Run as a principal that can read the system tables and the written
 tables; schedule monthly.
 
-## Lakemeter list-price agent only (legacy all-in-one)
+## Repository layout
 
-`setup_genie_lakemeter.py` is a Databricks notebook that does **everything** in one run —
-creates the schema, loads the pricing tables, creates all 29 functions, and builds the
-Genie Space (with synonyms) — all parameterized via widgets:
-
-| Widget | Meaning |
+| Path | What it is |
 |---|---|
-| `catalog` / `schema` | where to create tables + functions (e.g. `main` / `lakemeter`) |
-| `warehouse_id` | Pro/Serverless SQL warehouse id for the Genie Space |
-| `pricing_path` | **workspace folder** holding the pricing CSVs (blank = `./pricing_data` next to the notebook) |
-| `space_title` | Genie Space title |
-| `create_genie_space` / `load_tables` | toggles |
-
-**Steps:** import this repo folder into the customer workspace (so `setup_genie_lakemeter.py`
-and `pricing_data/` sit together), open the notebook, set the widgets, and **Run All**. It
-reads the CSVs from the workspace folder via the `file:/Workspace/...` path (no UC volume
-needed), then creates the Space and prints its URL. Uses the notebook's own auth for the
-Genie API — no tokens to configure.
-
-## Modular notebooks (run on a dedicated cluster)
-
-If you prefer step-by-step notebooks over the all-in-one, `notebooks/` has one per stage —
-import the folder and attach to any dedicated (or serverless) cluster, set the widgets, Run All:
-
-| Notebook | Lang | Does | Key widgets |
-|---|---|---|---|
-| `02_create_functions.sql` | SQL | `USE CATALOG/SCHEMA` then create all 29 list-price functions (unqualified) | `catalog`, `schema` |
-| `03_create_genie_space.py` | Python | Build the Genie Space (tables + functions + synonyms + instructions) | `catalog`, `schema`, `warehouse_id`, `space_title` |
-| `04_add_synonyms.py` | Python | Add/refresh column synonyms on an *existing* Space (GET → inject → PATCH) | `catalog`, `schema`, `space_id` |
-| `10_deploy_dcp_calculator.py` | Python | **DCP calculator:** deploy `dcp_estimator.py` as Unity Catalog functions, load named use cases, register the DCP skill on the Space | `catalog`, `schema`, `requests_path`, `space_id` |
-| `09_load_rate_card.py` | Python | **Rates:** refresh `ref_dbu_price_card` (Lakemeter + sizing) and `dcp_rate_card` (DCP) from `system.billing.account_prices` (governed) or `list_prices` (test) | `catalog`, `schema`, `rate_source`, `price_regions` |
-| `07_refresh_list_prices.sql` | SQL | Refresh the `dcp_list_price_rates` list-price snapshot (test workspaces) | `catalog`, `schema` |
-| `11_calibrate_sizing.py` | Python | **Sizing calibration:** measure throughput and start time per workload profile from job history; optional cluster-policy limits | `catalog`, `schema`, `lookback_days`, `mode`, `policy_id` |
-| `dcp_estimator.py` | Python module | The DCP Smart Estimation Calculator (v4.0.2). Source of truth for all DCP math | — |
-| `05_register_dcp_skill.py`, `06_load_dcp_intake.py`, `08_register_sizing_skill.py` | Python | *Superseded* SQL ports of the DCP math (v3.8) and sizing guidance. Notebook 10 retires them from the agent; kept for reference | — |
-
-Pricing tables: load them with `setup_genie_dcp_agent.py` (step 1) or `sql/01_load_tables.sql`. Then run 02 → 03 → 10 → 09
-(09 again whenever rates change; schedule it). The modular notebooks do not install workload sizing or the governed
-Lakemeter price card — use `setup_genie_dcp_agent.py` for the complete agent.
+| `setup_genie_dcp_agent.py` | The one-notebook installer (generated; don't edit by hand) |
+| `databricks.yml`, `resources/*.job.yml`, `dab-config.example.yml` | Deployment bundle: setup, grant, rate-refresh and calibration jobs |
+| `notebooks/09_load_rate_card.py` | Rate-refresh job (generated) |
+| `notebooks/11_calibrate_sizing.py` | Sizing calibration job |
+| `notebooks/12_grant_access.py` | Agent access for user groups |
+| `notebooks/dcp_estimator.py` | The DCP Smart Estimation Calculator — source of truth for all DCP math |
+| `notebooks/new_workload_template.json` | Format of a use-case request file (`requests_path`) |
+| `notebooks/reconcile_ai_rag.py`, `notebooks/ai_rag_model_api_request.json` | Calculator reconciliation for the AI_RAG_MODEL_API preset |
+| `sql/02_functions.sql` | Lakemeter cost functions (29) |
+| `sql/06_dcp_calculator.sql` | DCP calculator as UC functions (generated from `dcp_estimator.py`) |
+| `sql/08_workload_sizing.sql` | Workload sizing tables and functions |
+| `sql/09_governed_prices.sql` | Governed price card and `get_dbu_price` |
+| `genie/space_definition.json` | The agent definition: tables, functions, instructions, examples, samples, benchmarks |
+| `calculator/` | Builders (`build_sql.py`, `build_notebook.py`, `build_setup.py`), the calculator adapter and rate registry seed |
+| `samples/requests/` | Bundled use cases (`SEND_US01`, `AI_RAG_MODEL_API`, `FIN_CLAIMS_02`) |
+| `benchmark/` | 20-question benchmark harness and workbook filler |
+| `pricing_data/` | Lakemeter OSS pricing CSVs (loaded by setup step 1) |
 
 ### DCP calculator (the only source of DCP numbers)
 
@@ -231,8 +251,8 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
   `system.billing.list_prices` (`REFERENCE_ONLY`). No price → `PENDING`; there is no fallback.
 - **Validation**: bad input is rejected before any math with the calculator's field-level message
   (e.g. `transfer.daily_gb_high must be a non-negative number (got -1)`).
-- **Upgrading the calculator**: replace `notebooks/dcp_estimator.py`, run `python3 calculator/build_sql.py` and
-  `python3 calculator/build_notebook.py`, re-run notebook 10, then the benchmark.
+- **Upgrading the calculator**: replace `notebooks/dcp_estimator.py`, run the three builders
+  (`build_sql.py`, `build_notebook.py`, `build_setup.py`), run the `setup_agent` job (or the setup notebook), then the benchmark.
 
 ### Benchmark
 
@@ -240,32 +260,6 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
 each answer with the deployed calculator's output (agent pass = calculator called, figures reproduced to the cent,
 PENDING shown as PENDING), and separately checks the calculator engine at governed rates against the workbook's
 expected answers. `benchmark/fill_workbook.py` writes the results into a copy of the workbook.
-
-## Reproduce manually (CLI / SQL editor)
-
-Prereqs: Databricks CLI profile, a Pro/Serverless SQL warehouse, Databricks Assistant
-enabled. The pricing CSVs are bundled in this repo under `pricing_data/`. (The manual
-path below uses a UC volume; the notebook above uses a workspace folder instead.)
-
-```bash
-CATALOG=<catalog>; SCHEMA=lakemeter; PROFILE=<profile>; WID=<sql_warehouse_id>
-
-# 1. Schema + volume, then upload the pricing CSVs
-databricks ... CREATE SCHEMA $CATALOG.$SCHEMA ; CREATE VOLUME $CATALOG.$SCHEMA.raw
-databricks fs cp pricing_data/ dbfs:/Volumes/$CATALOG/$SCHEMA/raw/ --recursive
-
-# 2. Load tables + create functions (sql/01_load_tables.sql, sql/02_functions.sql)
-#    Run each statement via the SQL Statement Execution API / DBSQL editor.
-#    (Statements are separated by a line: -- @@ )
-
-# 3. Create the Genie Space
-python3 genie/create_space.py      # edit CAT/SCH/WID at the top first
-python3 genie/add_synonyms.py    # optional: add column synonyms + entity matching to the Space
-```
-
-> Retargeting: the SQL files and `create_space.py` hard-code
-> `fevm_catalog_naren.lakemeter` and the FEVM warehouse id — search/replace the
-> catalog, schema, warehouse id, and volume path for another workspace.
 
 ## Notes / gotchas
 

@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    grant_access:
+      name: genie-cost-estimator-grant-access
+      description: "Give the agent user groups access: CAN RUN on the Genie agent, USE CATALOG, and USE SCHEMA + SELECT + EXECUTE on the agent schema (inherited by every table and function). Run after changing user_groups."
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+      tasks:
+        - task_key: grant_access
+          notebook_task:
+            notebook_path: ../notebooks/12_grant_access.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              user_groups: ${var.user_groups}
+              space_id: ${var.space_id}
+              space_title: ${var.space_title}
+              warehouse_id: ${var.warehouse_id}
+              revoke_others: ${var.revoke_others}

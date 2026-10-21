@@ -1,0 +1,59 @@
+# Bundle parameters per environment. Copy this file to dab-config.yml (git-ignored) and fill it in;
+# databricks.yml includes dab-config.yml automatically. Then:
+#   databricks bundle validate --strict -t prod
+#   databricks bundle deploy -t prod
+#   databricks bundle run setup_agent -t prod
+# Any value can still be overridden on the command line with --var="name=value".
+# Only catalog and warehouse_id are required (plus run_as_service_principal for prod); the rest show their defaults.
+
+targets:
+  dev:
+    workspace:
+      host: https://<dev-workspace-host>          # or: profile: <databricks CLI profile>
+    variables:
+      catalog: <dev catalog>
+      schema: lakemeter
+      warehouse_id: <dev SQL warehouse id>        # Pro or Serverless
+      rate_source: ACCOUNT_PRICES                 # LIST_PRICES if the workspace has no account prices
+      space_title: Lakemeter Cost Estimator (dev)
+
+  prod:
+    workspace:
+      host: https://<prod-workspace-host>         # or: profile: <databricks CLI profile>
+    variables:
+      # --- agent location and compute ---
+      catalog: <prod catalog>
+      schema: lakemeter
+      warehouse_id: <prod SQL warehouse id>       # Pro or Serverless
+
+      # --- rates ---
+      rate_source: ACCOUNT_PRICES                 # governed rates from system.billing.account_prices
+      price_regions: us-east-1                    # comma list of regions to price, or ALL
+      sku_region: US_EAST_N_VIRGINIA              # billing SKU suffix for the DCP calculator's US_EAST_1
+
+      # --- the agent ---
+      space_id: ""                                # blank = update the agent titled space_title, or create it
+      space_title: Lakemeter Cost Estimator
+      requests_path: ""                           # optional workspace folder of extra use-case request JSON files
+      load_pricing_tables: "true"                 # "false" for faster setup re-runs
+
+      # --- Genie agent access (applied after setup, or by the grant_access job) ---
+      # Each group gets: CAN RUN on the agent; USE CATALOG on the catalog; USE SCHEMA, SELECT (read the data)
+      # and EXECUTE (run the functions) on the agent schema, inherited by every table and function.
+      user_groups: "<agent users group>, <another group>"   # one or more, comma-separated
+      revoke_others: "false"                      # "true" = unlisted groups lose their schema grants
+
+      # --- maintenance jobs ---
+      calibration_mode: DRY_RUN                   # APPLY once the calibration report looks right
+      policy_id: ""                               # optional job cluster policy id (worker limit for sizing)
+      schedule_pause_status: UNPAUSED             # PAUSED to stop the daily / monthly schedules
+
+      # --- identity ---
+      run_as_service_principal: <service principal application id>
+
+    # Optional: who can view, run or manage the bundle's jobs (not the agent itself)
+    permissions:
+      - level: CAN_MANAGE
+        group_name: <platform admins group>
+      - level: CAN_VIEW
+        group_name: <agent users group>

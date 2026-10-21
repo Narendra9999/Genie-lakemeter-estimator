@@ -46,11 +46,21 @@ dbutils.widgets.text("max_tables", "500", "12. Max tables to read history from")
 dbutils.widgets.dropdown("mode", "DRY_RUN", ["DRY_RUN", "APPLY"], "13. Mode")
 dbutils.widgets.dropdown("volume_source", "AUTO", ["AUTO", "DELTA_ONLY", "NETWORK_ONLY"], "14. Data volume source")
 
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **First run:** the cell above only creates the parameter widgets at the top of the notebook. Fill in at least
+# MAGIC `catalog`, then **Run all** again. In a job, pass the values as notebook parameters instead.
+
+# COMMAND ----------
+
+
 import json, re
 W = {k: dbutils.widgets.get(k).strip() for k in ("catalog", "schema", "lookback_days", "min_runs", "min_gb_per_run", "job_name_filter",
                                                  "profile_rules", "source_to_delta_ratio", "rate_source", "policy_id", "cloud", "max_tables", "mode", "volume_source")}
 if not W["catalog"]:
-    raise ValueError("Set the catalog widget.")
+    msg = "Fill in the catalog widget at the top of the notebook, then run all cells again (or pass it as a job parameter)."
+    print(msg); dbutils.notebook.exit(msg)
 FQ = f"{W['catalog']}.{W['schema']}"
 LOOKBACK, MIN_RUNS, MIN_GB = int(W["lookback_days"]), int(W["min_runs"]), float(W["min_gb_per_run"])
 RATIO = float(W["source_to_delta_ratio"] or 1)

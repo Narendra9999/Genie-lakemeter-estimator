@@ -3,17 +3,16 @@
 #   setup_agent        setup_genie_dcp_agent.py   build or update the whole agent (run on install and after changes)
 #   rate_refresh       09_load_rate_card.py       reload both rate cards from system.billing (daily)
 #   sizing_calibration 11_calibrate_sizing.py     measure sizing throughput from job history (monthly)
-# Usage: see "Deploy with a bundle" in README.md.
+#   grant_access       12_grant_access.py         give the agent user groups access (also runs after setup_agent)
+# Usage: fill in dab-config.yml (from dab-config.example.yml), then see "Deploy with a bundle" in README.md.
 bundle:
   name: genie-cost-estimator
 
 include:
   - resources/*.yml
-
-sync:
-  exclude:
-    - benchmark/results/**
-    - "**/__pycache__/**"
+  # Per-environment values (workspace, catalog, warehouse, service principal...). Copy dab-config.example.yml to
+  # dab-config.yml and fill it in; dab-config.yml is git-ignored. --var on the command line still overrides it.
+  - dab-config.y?l
 
 variables:
   catalog:
@@ -38,9 +37,12 @@ variables:
   space_title:
     description: Genie agent title
     default: Lakemeter Cost Estimator
-  user_group:
-    description: Group granted access to the agent and its schema (blank = no grants)
+  user_groups:
+    description: Agent user groups, comma-separated. Each gets CAN RUN on the agent, USE CATALOG, and USE SCHEMA + SELECT + EXECUTE on the agent schema (blank = no grants)
     default: ""
+  revoke_others:
+    description: "true = groups not in user_groups lose their USE SCHEMA / SELECT / EXECUTE grants on the agent schema"
+    default: "false"
   requests_path:
     description: Optional workspace folder of extra use-case request JSON files
     default: ""

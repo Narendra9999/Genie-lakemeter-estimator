@@ -1,9 +1,9 @@
-"""Generate sql/06_dcp_calculator.sql and sql/07_dcp_rate_card.sql.
+"""Generate sql/06_dcp_calculator.sql and calculator/rate_registry_seed.json.
 
 The Unity Catalog Python function dcp_calc embeds notebooks/dcp_estimator.py VERBATIM (plus the thin
 calculator/dcp_adapter.py), so the notebook, the SQL API and Genie run the same calculator.
-To upgrade the calculator: replace notebooks/dcp_estimator.py, re-run this script and
-calculator/build_notebook.py, then redeploy (notebook 10).
+To upgrade the calculator: replace notebooks/dcp_estimator.py, re-run this script, calculator/build_notebook.py and
+calculator/build_setup.py, then run the setup_agent bundle job (or setup_genie_dcp_agent.py).
 Statements are separated by '-- @@'; __FQ__ becomes <catalog>.<schema> at deploy time.
 """
 import dataclasses, hashlib, importlib.util, os
@@ -185,46 +185,12 @@ RETURN
   UNION ALL SELECT use_case_id, 'DISCLAIMER', NULL, NULL, j.disclaimer FROM j""")
 open(os.path.join(ROOT, "sql", "06_dcp_calculator.sql"), "w").write("\n-- @@\n".join(stmts) + "\n")
 
-# ---- rate card seed = the calculator's reference registry; Databricks DBU rows are then re-priced (07 / notebook 09) ----
+# ---- rate card seed = the calculator's reference registry; Databricks DBU rows are re-priced by the setup notebook / notebook 09 ----
 BILLING_SKU = {"ENTERPRISE_JOBS_SERVERLESS": "ENTERPRISE_JOBS_SERVERLESS_COMPUTE", "SQL_PRO": "ENTERPRISE_SQL_PRO_COMPUTE",
                "ENTERPRISE_ALL_PURPOSE_COMPUTE": "ENTERPRISE_ALL_PURPOSE_COMPUTE",
                "ENTERPRISE_ALL_PURPOSE_SERVERLESS_COMPUTE": "ENTERPRISE_ALL_PURPOSE_SERVERLESS_COMPUTE",
                "ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE": "ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE"}
-def lit(v): return "NULL" if v is None else (repr(float(v)) if isinstance(v, (int, float)) else "'" + str(v).replace("'", "''") + "'")
-rows = []
-for r in m.DEFAULT_RATE_REGISTRY:
-    d = dataclasses.asdict(r)
-    bsku = BILLING_SKU.get(r.sku) if r.provider == "DATABRICKS" else None
-    rows.append("(" + ", ".join(lit(d[k]) for k in ("provider", "service", "sku", "unit", "region", "rate", "status", "source",
-                                                       "effective_start", "effective_end", "observed_rate", "notes"))
-                + f", {lit(bsku)}, current_timestamp())")
-SEED = ",\n ".join(rows)
 open(os.path.join(ROOT, "calculator", "rate_registry_seed.json"), "w").write(
     __import__("json").dumps({"calculator_version": VERSION, "billing_sku": BILLING_SKU,
                               "rows": [dataclasses.asdict(r) for r in m.DEFAULT_RATE_REGISTRY]}, indent=1))
-rc = f"""-- DCP rate card for test workspaces WITHOUT negotiated account prices (list prices).
--- In production run notebooks/09_load_rate_card.py with rate_source = ACCOUNT_PRICES instead.
--- 1. seed with the calculator v{VERSION} reference registry (AWS rows are used as-is)
-DELETE FROM __FQ__.dcp_rate_card
--- @@
-INSERT INTO __FQ__.dcp_rate_card VALUES
- {SEED}
--- @@
--- 2. Databricks DBU rows: list price from the dcp_list_price_rates snapshot; no list price -> PENDING (never the seed value)
-MERGE INTO __FQ__.dcp_rate_card t
-USING (SELECT c.sku, c.region, l.rate
-       FROM __FQ__.dcp_rate_card c
-       LEFT JOIN (SELECT sku_name, max_by(rate, price_start_time) AS rate FROM __FQ__.dcp_list_price_rates GROUP BY sku_name) l
-         ON l.sku_name = c.billing_sku || '_US_EAST_N_VIRGINIA'
-       WHERE c.provider = 'DATABRICKS' AND c.unit = 'DBU' AND c.region = 'US_EAST_1') s
-ON t.sku = s.sku AND t.region = s.region AND t.provider = 'DATABRICKS' AND t.unit = 'DBU'
-WHEN MATCHED THEN UPDATE SET
-  rate = s.rate,
-  status = CASE WHEN s.rate IS NULL THEN 'PENDING' ELSE 'REFERENCE_ONLY' END,
-  source = 'system.billing.list_prices (list price; account rates not available in this workspace)',
-  observed_rate = t.rate,
-  notes = 'List price used for testing; production estimates use the governed rate from system.billing.account_prices.',
-  effective_start = '2026-01-01', effective_end = NULL, refreshed_at = current_timestamp()
-"""
-open(os.path.join(ROOT, "sql", "07_dcp_rate_card.sql"), "w").write(rc)
-print(f"calculator v{VERSION} key {KEY}: wrote sql/06_dcp_calculator.sql ({len(stmts)} statements), sql/07_dcp_rate_card.sql")
+print(f"calculator v{VERSION} key {KEY}: wrote sql/06_dcp_calculator.sql ({len(stmts)} statements) and calculator/rate_registry_seed.json")

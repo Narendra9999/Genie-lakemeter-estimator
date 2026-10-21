@@ -31,10 +31,21 @@ dbutils.widgets.text("space_title", "Lakemeter Cost Estimator", "8. Agent title"
 dbutils.widgets.text("user_group", "", "9. Group to grant agent access (optional)")
 dbutils.widgets.dropdown("load_pricing_tables", "true", ["true", "false"], "10. Load pricing tables")
 dbutils.widgets.dropdown("smoke_test", "true", ["true", "false"], "11. Ask the agent a test question")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **First run:** the cell above only creates the parameter widgets at the top of the notebook. Fill in at least
+# MAGIC `catalog` and `warehouse_id`, then **Run all** again. In a job, pass them as notebook parameters instead.
+
+# COMMAND ----------
+
 W = {k: dbutils.widgets.get(k).strip() for k in ("catalog", "schema", "warehouse_id", "pricing_path", "rate_source", "price_regions", "requests_path",
                                                  "space_id", "space_title", "user_group", "load_pricing_tables", "smoke_test")}
-if not W["catalog"] or not W["warehouse_id"]:
-    raise ValueError("Set the catalog and warehouse_id widgets.")
+missing = [k for k in ("catalog", "warehouse_id") if not W[k]]
+if missing:
+    msg = f"Fill in the {' and '.join(missing)} widget(s) at the top of the notebook, then run all cells again (or pass them as job parameters)."
+    print(msg); dbutils.notebook.exit(msg)
 FQ = f"{W['catalog']}.{W['schema']}"
 ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
 HOST = "https://" + spark.conf.get("spark.databricks.workspaceUrl")

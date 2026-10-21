@@ -1,6 +1,6 @@
 """Generate setup_genie_dcp_agent.py - ONE notebook that builds the whole Genie Cost Estimator Agent in a workspace.
 
-Embeds: the list-price functions (from setup_genie_lakemeter.py), the DCP calculator SQL (sql/06, which embeds
+Embeds: the Lakemeter functions (sql/02_functions.sql), sizing (sql/08), governed prices (sql/09), the DCP calculator SQL (sql/06, which embeds
 notebooks/dcp_estimator.py verbatim), the calculator rate registry, the named use cases (samples/requests) and the
 validated Genie agent definition (genie/space_definition.json). The only external input is the pricing CSV folder.
 Run calculator/build_sql.py first. Re-run all builders after any change.
@@ -8,8 +8,7 @@ Run calculator/build_sql.py first. Re-run all builders after any change.
 import json, os, re
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 rd = lambda *p: open(os.path.join(ROOT, *p)).read()
-legacy = rd("setup_genie_lakemeter.py")
-FUNCTIONS_SQL = re.search(r'FUNCTIONS_SQL = r"""\n(.*?)\n"""', legacy, re.S).group(1)
+FUNCTIONS_SQL = "\n".join(l for l in rd("sql", "02_functions.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
 CALC_SQL = rd("sql", "06_dcp_calculator.sql").strip()
 GOV_SQL = "\n".join(l for l in rd("sql", "09_governed_prices.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
 SIZING_SQL = "\n".join(l for l in rd("sql", "08_workload_sizing.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
@@ -52,10 +51,21 @@ dbutils.widgets.text("space_title", "{SPACE["title"]}", "8. Agent title")
 dbutils.widgets.text("user_group", "", "9. Group to grant agent access (optional)")
 dbutils.widgets.dropdown("load_pricing_tables", "true", ["true", "false"], "10. Load pricing tables")
 dbutils.widgets.dropdown("smoke_test", "true", ["true", "false"], "11. Ask the agent a test question")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **First run:** the cell above only creates the parameter widgets at the top of the notebook. Fill in at least
+# MAGIC `catalog` and `warehouse_id`, then **Run all** again. In a job, pass them as notebook parameters instead.
+
+# COMMAND ----------
+
 W = {{k: dbutils.widgets.get(k).strip() for k in ("catalog", "schema", "warehouse_id", "pricing_path", "rate_source", "price_regions", "requests_path",
                                                  "space_id", "space_title", "user_group", "load_pricing_tables", "smoke_test")}}
-if not W["catalog"] or not W["warehouse_id"]:
-    raise ValueError("Set the catalog and warehouse_id widgets.")
+missing = [k for k in ("catalog", "warehouse_id") if not W[k]]
+if missing:
+    msg = f"Fill in the {{' and '.join(missing)}} widget(s) at the top of the notebook, then run all cells again (or pass them as job parameters)."
+    print(msg); dbutils.notebook.exit(msg)
 FQ = f"{{W['catalog']}}.{{W['schema']}}"
 ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
 HOST = "https://" + spark.conf.get("spark.databricks.workspaceUrl")
