@@ -23,7 +23,7 @@ It is self-contained — the only other thing to upload is the `pricing_data/` f
 | `rate_source` | `ACCOUNT_PRICES` (governed, production) or `LIST_PRICES` (workspaces without account prices). Applies to **every** estimate: Lakemeter, sizing and DCP |
 | `price_regions` | Regions to load into the Lakemeter price card (`us-east-1` default; comma list or `ALL`). Other regions return PENDING |
 | `requests_path` | Optional folder of use-case request JSON files (format: `notebooks/new_workload_template.json`) |
-| `space_id` | Blank = create a new agent; an existing id = update that agent in place (same URL and MCP endpoint) |
+| `space_id` | An existing id = update that agent in place (same URL and MCP endpoint). Blank = update the agent with the same `space_title`, or create one if none exists |
 | `user_group` | Optional group to grant `USE`/`SELECT`/`EXECUTE`, `CAN RUN` on the agent and `CAN USE` on the warehouse |
 | `smoke_test` | Asks the new agent a DCP question and prints the answer |
 
@@ -34,6 +34,51 @@ or the agent definition, rebuild it:
 ```
 python3 calculator/build_sql.py && python3 calculator/build_notebook.py && python3 calculator/build_setup.py
 ```
+
+## Deploy with a bundle (jobs for setup and maintenance)
+
+`databricks.yml` is a Declarative Automation Bundle that deploys this repo and three jobs:
+
+| Job (resource key) | Notebook | Schedule | Does |
+|---|---|---|---|
+| `setup_agent` | `setup_genie_dcp_agent.py` | On demand | Builds or updates the whole agent; run on install and after any change |
+| `rate_refresh` | `notebooks/09_load_rate_card.py` | Daily 05:00 UTC | Reloads `dcp_rate_card` and `ref_dbu_price_card` from `system.billing` |
+| `sizing_calibration` | `notebooks/11_calibrate_sizing.py` | Monthly, 1st 06:00 UTC | Calibrates sizing from job history (`DRY_RUN` by default; set `calibration_mode=APPLY` once the report looks right) |
+
+Jobs run on serverless compute. Targets:
+
+| Target | Use | Notes |
+|---|---|---|
+| `dev` (default) | Try it in your own folder | Job names are prefixed `[dev <user>]`; schedules are paused |
+| `prod` | Production | Jobs run as `run_as_service_principal`; files go to the deployer's folder (deploy from CI as the service principal) |
+
+```bash
+# validate, deploy, then build the agent
+databricks bundle validate --strict -t prod --var="catalog=<catalog>" --var="warehouse_id=<id>" \
+  --var="run_as_service_principal=<application id>" --var="user_group=<agent users group>"
+databricks bundle deploy -t prod  --var=... (same values)
+databricks bundle run setup_agent -t prod --var=... (same values)
+```
+
+To avoid repeating `--var`, put the values in `.databricks/bundle/<target>/variable-overrides.json`
+(e.g. `{"catalog": "dcp_finops", "warehouse_id": "...", "user_group": "..."}`).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `catalog`, `warehouse_id` | — (required) | Agent catalog; Pro or Serverless SQL warehouse |
+| `schema` | `lakemeter` | Agent schema |
+| `rate_source` | `ACCOUNT_PRICES` | `LIST_PRICES` for workspaces without account prices |
+| `price_regions` / `sku_region` | `us-east-1` / `US_EAST_N_VIRGINIA` | Regions in the Lakemeter price card / DCP region suffix |
+| `space_id`, `space_title` | blank / `Lakemeter Cost Estimator` | Which agent to update (blank id = the agent with this title, else create) |
+| `user_group` | blank | Group granted access to the agent and schema |
+| `requests_path` | blank | Extra use-case request JSON folder |
+| `load_pricing_tables` | `true` | `false` for faster setup re-runs |
+| `calibration_mode`, `policy_id` | `DRY_RUN`, blank | Calibration mode; job cluster policy for the worker limit |
+| `schedule_pause_status` | `UNPAUSED` | `PAUSED` to stop the schedules |
+| `run_as_service_principal` | — (required for `prod`) | Application id the prod jobs run as |
+
+The service principal needs `SELECT` on `system.billing.account_prices` (and, for calibration, `system.lakeflow`,
+`system.compute`, `system.billing.usage`, `system.access.table_lineage`), and create/modify on the agent schema.
 
 ## What it creates
 

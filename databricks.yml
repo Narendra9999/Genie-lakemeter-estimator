@@ -1,0 +1,75 @@
+# Declarative Automation Bundle for the Genie Cost Estimator Agent.
+# Deploys three jobs that run the notebooks in this repo:
+#   setup_agent        setup_genie_dcp_agent.py   build or update the whole agent (run on install and after changes)
+#   rate_refresh       09_load_rate_card.py       reload both rate cards from system.billing (daily)
+#   sizing_calibration 11_calibrate_sizing.py     measure sizing throughput from job history (monthly)
+# Usage: see "Deploy with a bundle" in README.md.
+bundle:
+  name: genie-cost-estimator
+
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - benchmark/results/**
+    - "**/__pycache__/**"
+
+variables:
+  catalog:
+    description: Catalog that holds the agent schema (required)
+  schema:
+    description: Agent schema (created if missing)
+    default: lakemeter
+  warehouse_id:
+    description: Pro or Serverless SQL warehouse the agent runs on (required)
+  rate_source:
+    description: ACCOUNT_PRICES (governed, production) or LIST_PRICES (workspaces without account prices)
+    default: ACCOUNT_PRICES
+  price_regions:
+    description: Regions to load into the Lakemeter price card (comma list, or ALL)
+    default: us-east-1
+  sku_region:
+    description: Billing SKU region suffix for the DCP calculator's US_EAST_1
+    default: US_EAST_N_VIRGINIA
+  space_id:
+    description: Genie agent id to update; blank = the agent with space_title, created if none
+    default: ""
+  space_title:
+    description: Genie agent title
+    default: Lakemeter Cost Estimator
+  user_group:
+    description: Group granted access to the agent and its schema (blank = no grants)
+    default: ""
+  requests_path:
+    description: Optional workspace folder of extra use-case request JSON files
+    default: ""
+  load_pricing_tables:
+    description: Reload the Lakemeter pricing tables on setup (false = faster re-runs)
+    default: "true"
+  calibration_mode:
+    description: DRY_RUN (report only) or APPLY (update ref_sizing_profiles)
+    default: DRY_RUN
+  policy_id:
+    description: Optional job cluster policy id; calibration loads its worker limit into ref_sizing_policy
+    default: ""
+  schedule_pause_status:
+    description: UNPAUSED or PAUSED for the rate-refresh and calibration schedules
+    default: UNPAUSED
+  run_as_service_principal:
+    description: Application id of the service principal the prod jobs run as
+    default: ""
+
+targets:
+  dev:
+    # Jobs are prefixed with "[dev <user>]" and schedules are paused.
+    mode: development
+    default: true
+
+  prod:
+    # Deploy as (or for) a service principal, e.g. from CI. Files go to the deployer's own folder, not /Workspace/Shared.
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.run_as_service_principal}

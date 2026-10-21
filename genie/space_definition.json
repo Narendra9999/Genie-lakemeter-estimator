@@ -1,6 +1,6 @@
 {
  "title": "Lakemeter Cost Estimator",
- "description": "Databricks cost estimation agent. (1) DCP Smart Estimation through the governed DCP calculator (v4.0.2): LOW / EXPECTED / HIGH / STRESS monthly, one-time and first-year costs for named use cases or described workloads (streaming, scheduled and event-driven batch, SQL reporting, DataSync, S3/KMS, pay-per-token model APIs), with line items, confidence and pending items. (2) List-price estimates for configured Databricks workloads (clusters, SQL warehouses, Model Serving, Vector Search, Foundation Model APIs, AI functions, Lakebase, Apps).",
+ "description": "Databricks cost estimation agent, priced at governed account rates. (1) DCP Smart Estimation through the DCP calculator: LOW / EXPECTED / HIGH / STRESS monthly, one-time and first-year costs for named use cases or described workloads (streaming, scheduled and event-driven batch, SQL reporting, DataSync, S3/KMS, pay-per-token model APIs), with line items, confidence and pending items. (2) Workload sizing: recommends a job cluster from the workload type, data volume and frequency, then prices it on classic and serverless Jobs. (3) Cost estimates for configured Databricks workloads (clusters, SQL warehouses, Model Serving, Vector Search, Foundation Model APIs, AI functions, Lakebase, Apps).",
  "tables": [
   {
    "identifier": "__FQ__.dcp_rate_card",

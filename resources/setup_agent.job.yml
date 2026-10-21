@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    setup_agent:
+      name: genie-cost-estimator-setup
+      description: Build or update the Genie Cost Estimator Agent (tables, functions, DCP calculator, rate cards, use cases, agent definition, benchmarks, grants). Run on install and after any change.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      tasks:
+        - task_key: setup_agent
+          notebook_task:
+            notebook_path: ../setup_genie_dcp_agent.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              warehouse_id: ${var.warehouse_id}
+              pricing_path: ""
+              rate_source: ${var.rate_source}
+              price_regions: ${var.price_regions}
+              requests_path: ${var.requests_path}
+              space_id: ${var.space_id}
+              space_title: ${var.space_title}
+              user_group: ${var.user_group}
+              load_pricing_tables: ${var.load_pricing_tables}
+              smoke_test: "true"

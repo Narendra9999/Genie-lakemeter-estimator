@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    sizing_calibration:
+      name: genie-cost-estimator-sizing-calibration
+      description: Measure sizing throughput and cluster start time from successful job runs (system.lakeflow, system.compute, system.billing). DRY_RUN reports; APPLY updates ref_sizing_profiles.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      schedule:
+        quartz_cron_expression: "0 0 6 1 * ?"
+        timezone_id: UTC
+        pause_status: ${var.schedule_pause_status}
+      tasks:
+        - task_key: calibrate_sizing
+          notebook_task:
+            notebook_path: ../notebooks/11_calibrate_sizing.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              rate_source: ${var.rate_source}
+              lookback_days: "90"
+              min_runs: "10"
+              policy_id: ${var.policy_id}
+              mode: ${var.calibration_mode}

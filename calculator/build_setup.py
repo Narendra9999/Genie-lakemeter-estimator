@@ -31,7 +31,7 @@ nb = f'''# Databricks notebook source
 # MAGIC | 3 | The **DCP Smart Estimation Calculator v{V}** as Unity Catalog functions (`dcp_calc`, `dcp_calc_totals`, `dcp_calc_line_items`, `dcp_calc_details`, `dcp_request`) |
 # MAGIC | 4 | Rates: `ref_dbu_price_card` (every Lakemeter and sizing DBU price) and `dcp_rate_card` (DCP calculator), both from `system.billing.account_prices` (governed) or `list_prices`; no price = PENDING |
 # MAGIC | 5 | `dcp_requests`: named use cases (bundled presets, plus any request JSON files in `requests_path`) |
-# MAGIC | 6 | The Genie agent (created, or updated in place when `space_id` is given) |
+# MAGIC | 6 | The Genie agent (updated in place: by `space_id`, else the agent with the same title; created if none) |
 # MAGIC | 7 | Optional grants for an agent-user group, and a smoke test through the Genie API |
 # MAGIC
 # MAGIC **Needs:** a UC-enabled cluster (DBR 13.3 LTS+) or serverless; `CREATE SCHEMA/TABLE/FUNCTION` on the catalog;
@@ -47,7 +47,7 @@ dbutils.widgets.text("pricing_path", "", "4. Pricing CSV folder (blank = ./prici
 dbutils.widgets.dropdown("rate_source", "ACCOUNT_PRICES", ["ACCOUNT_PRICES", "LIST_PRICES"], "5. Databricks rate source (all estimates)")
 dbutils.widgets.text("price_regions", "us-east-1", "5b. Regions to price (comma list, or ALL)")
 dbutils.widgets.text("requests_path", "", "6. Extra use-case request JSON folder (optional)")
-dbutils.widgets.text("space_id", "", "7. Existing Genie agent id to update (blank = create)")
+dbutils.widgets.text("space_id", "", "7. Genie agent id to update (blank = the agent with this title, else create)")
 dbutils.widgets.text("space_title", "{SPACE["title"]}", "8. Agent title")
 dbutils.widgets.text("user_group", "", "9. Group to grant agent access (optional)")
 dbutils.widgets.dropdown("load_pricing_tables", "true", ["true", "false"], "10. Load pricing tables")
@@ -236,6 +236,19 @@ serialized = {{
                                       **({{"evaluation_note": b["evaluation_note"]}} if b.get("evaluation_note") else {{}})}}
                                      for b in D.get("benchmarks", [])], key=lambda x: x["id"])}}}}
 body = {{"warehouse_id": W["warehouse_id"], "title": W["space_title"], "description": D["description"], "serialized_space": json.dumps(serialized)}}
+if not W["space_id"]:
+    # No id given: reuse the agent with the same title, so re-running this notebook (e.g. as a bundle job) never creates duplicates
+    found, token = [], None
+    while True:
+        r = requests.get(f"{{HOST}}/api/2.0/genie/spaces", headers=HEADERS, params={{"page_size": 100, **({{"page_token": token}} if token else {{}})}})
+        r.raise_for_status(); page = r.json()
+        found += [x["space_id"] for x in page.get("spaces", []) if x.get("title") == W["space_title"]]
+        token = page.get("next_page_token")
+        if not token: break
+    if len(found) > 1:
+        raise ValueError(f"{{len(found)}} Genie agents are titled {{W['space_title']!r}}: {{found}}. Set space_id to the one to update.")
+    if found:
+        W["space_id"] = found[0]; print("Found existing agent with this title:", found[0])
 if W["space_id"]:
     r = requests.patch(f"{{HOST}}/api/2.0/genie/spaces/{{W['space_id']}}", headers=HEADERS, json=body); r.raise_for_status(); space_id = W["space_id"]
     print("Genie agent updated:", space_id)
@@ -244,6 +257,10 @@ else:
     print("Genie agent created:", space_id)
 print("Open:", f"{{HOST}}/genie/rooms/{{space_id}}")
 print("MCP endpoint for Copilot:", f"{{HOST}}/api/2.0/mcp/genie/{{space_id}}")
+try:
+    dbutils.jobs.taskValues.set(key="space_id", value=space_id)   # readable by later job tasks
+except Exception:
+    pass
 
 # COMMAND ----------
 
