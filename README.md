@@ -141,7 +141,7 @@ In `<catalog>.<schema>`:
   - Document AI: `estimate_ai_parse_cost`, `estimate_ai_classify_cost`, `estimate_ai_extract_cost`
   - Platform: `estimate_lakebase_cost`, `estimate_databricks_apps_cost`
 - **DCP calculator** functions (`dcp_calc`, `dcp_calc_run`, `dcp_calc_totals`, `dcp_calc_line_items`,
-  `dcp_calc_details`, `dcp_request`), **workload sizing** (`size_cluster`, `estimate_sized_workload`) and
+  `dcp_calc_details`, `dcp_request`, `dcp_intake_questions`, plus the input check `dcp_check` / `dcp_check_inputs`), **workload sizing** (`size_cluster`, `estimate_sized_workload`) and
   `get_dbu_price_status`, with their tables (`dcp_requests`, `dcp_rate_card`, `ref_dbu_price_card`, `ref_sizing_*`).
 - A **Genie agent** over the tables, with the functions registered as trusted assets, plus instructions, example SQL,
   sample questions and the 20 DCP workbook questions in its Benchmarks tab.
@@ -240,7 +240,9 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
 | `dcp_calc_totals(p_use_case \| p_request, p_overrides)` | Per scenario: all-in and core monthly, annual, one-time, first year, DBU/USD, AWS, pending count, status, confidence |
 | `dcp_calc_line_items(..., p_scenario)` | Every priced or PENDING line: quantity, unit, rate, rate status/source, cost, treatment, evidence, formula |
 | `dcp_calc_details(...)` | Summary, confidence, pending items, compute decisions, assumptions, warnings, scope, rates used, errors |
-| `dcp_request(p_workload_type =>, p_runtime_hours_expected =>, p_concurrent_users =>, ...)` | Builds an ad-hoc request from stated values (blanks stay PENDING) |
+| `dcp_request(p_workload_type =>, p_runtime_hours_expected =>, p_concurrent_users =>, ..., p_not_applicable_areas =>)` | Builds an ad-hoc request from stated values, the user's identifiers, the requested scenarios (default LOW / EXPECTED / HIGH) and the state of each area |
+| `dcp_intake_questions(p_area)` | Guided intake generated from the request schema: every input per area, `REQUIRED` / `DEFAULT` (with the default value) / `OPTIONAL`, and its question |
+| `dcp_check_inputs(p_use_case \| p_request, p_overrides)` | The input check as rows (SQL / API use; not registered in the Genie agent) |
 
 - **Named use cases** live in `dcp_requests`: a calculator preset (`SEND_US01`, `AI_RAG_MODEL_API`) or an
   `EstimateRequest` JSON (see `new_workload_template()` in the calculator; samples in `samples/requests/`).
@@ -249,8 +251,22 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
 - **Rates**: `dcp_rate_card` mirrors the calculator's rate registry (provider, SKU, unit, region). Notebook 09 replaces
   the Databricks DBU rows from `system.billing.account_prices` (`GOVERNED`) or, where account prices are not available,
   `system.billing.list_prices` (`REFERENCE_ONLY`). No price → `PENDING`; there is no fallback.
-- **Validation**: bad input is rejected before any math with the calculator's field-level message
-  (e.g. `transfer.daily_gb_high must be a non-negative number (got -1)`).
+- **Input check before any math**: every `dcp_calc_*` call checks the request first (`calculator/dcp_adapter.py`
+  `check()`; the calculator itself is unchanged). If anything is missing or wrong, nothing is priced: `request_status` is
+  `NEEDS_INPUT` and `errors` holds one question per item — `MISSING` (an input with no calculator default, e.g. runs per
+  month for a scheduled batch, concurrent SQL users, GB per day, retained TB, files per day, reads per file, model calls
+  and tokens), `WRONG_TYPE` (e.g. `"30"` instead of `30`), `INVALID_VALUE` (negative, unknown workload type or model, or
+  anything the calculator would reject, e.g. `transfer.daily_gb_high must be a non-negative number (got -1)`),
+  `UNKNOWN_FIELD` (with a suggested spelling), `NOT_JSON`, `NO_WORKLOAD`. Inputs with a planning default (DBU/hour,
+  event-driven runs, working / transfer days, streaming latency) are not asked for and are listed as assumptions; a
+  missing low or high bound only leaves that scenario PENDING. Named use cases are validated but keep their presented scope.
+- **Areas**: before an estimate is final every calculator area — processing, sql, transfer, storage, model_endpoints,
+  one_time_model_jobs — must be `INCLUDED` (it has inputs), `EXCLUDED`, `UNKNOWN` or `NOT_APPLICABLE`. Unconfirmed areas
+  return `AREA_UNCONFIRMED`. States go in the request as `"_areas": {"transfer": "NOT_APPLICABLE"}` (keys starting with
+  `_` are ignored by the calculator), in `dcp_request(p_excluded_areas / p_unknown_areas / p_not_applicable_areas)`, or
+  as overrides (`{"_areas.storage": "UNKNOWN"}`). Results report `area_states`; named use cases' missing areas are
+  `NOT_APPLICABLE`.
+- **Identifiers and scenarios**: a submitted `use_case_id`, `component_id` and `scenarios` list are kept as given.
 - **Upgrading the calculator**: replace `notebooks/dcp_estimator.py`, run the three builders
   (`build_sql.py`, `build_notebook.py`, `build_setup.py`), run the `setup_agent` job (or the setup notebook), then the benchmark.
 
@@ -259,7 +275,10 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
 `benchmark/run_benchmark.py` asks the agent the 20 benchmark questions (DCP workbook tab C) as written, compares
 each answer with the deployed calculator's output (agent pass = calculator called, figures reproduced to the cent,
 PENDING shown as PENDING), and separately checks the calculator engine at governed rates against the workbook's
-expected answers. `benchmark/fill_workbook.py` writes the results into a copy of the workbook.
+expected answers. `benchmark/fill_workbook.py` writes the results into a copy of the workbook. Ad-hoc questions do not
+say whether the other areas apply, so the agent's first reply must ask for the area states without figures; the
+follow-up "The other calculator areas are not applicable." is then graded. Q18 (no runs per month) and Q20 (-1 GB) pass
+when the agent asks for the input and shows no figures.
 
 ## Notes / gotchas
 
