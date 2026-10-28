@@ -877,10 +877,10 @@
   },
   {
    "question": [
-    "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. The other calculator areas are not applicable. What is the Expected monthly cost?"
+    "5 TB is retained in S3 with 400 files a day, none encrypted, each read twice. The other calculator areas are not applicable. Monthly cost?"
    ],
    "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 5, p_files_per_day => 400, p_encrypted_files_per_day => 0, p_s3_read_requests_per_file => 2, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
    ]
   },
   {
@@ -893,18 +893,18 @@
   },
   {
    "question": [
-    "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration; nothing else applies. What are the costs?"
+    "We copy 3 GB a day with DataSync on 20 days a month and migrate 1,200 GB once. Processing, SQL, storage and model work are not applicable. Costs?"
    ],
    "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 3, p_transfer_days_per_month => 20, p_initial_transfer_gb => 1200, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
    ]
   },
   {
    "question": [
-    "A streaming workload needs seconds-level latency; nothing else applies. What does it cost?"
+    "Two Kafka streaming jobs need second-level latency. SQL, transfer, storage and model work are not applicable. What do they cost?"
    ],
    "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_quantity => 2, p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
    ]
   }
  ],
