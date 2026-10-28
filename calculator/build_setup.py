@@ -208,8 +208,8 @@ if W["requests_path"]:
     loaded.update({{os.path.basename(p)[:-5]: json.load(open(p)) for p in sorted(glob.glob(os.path.join(folder, "*.json")))}})
 rows = []
 for name, req in loaded.items():
-    res = json.loads(spark.sql(f"SELECT {{FQ}}.dcp_calc(:r, NULL, NULL) AS j", args={{"r": json.dumps(req)}}).first().j)
-    if res["status"] == "REJECTED":
+    res = json.loads(spark.sql(f"SELECT {{FQ}}.dcp_calc(:r, NULL, NULL, true) AS j", args={{"r": json.dumps(req)}}).first().j)
+    if res["status"] in ("REJECTED", "NEEDS_INPUT"):
         raise ValueError(f"{{name}}: request rejected by the calculator - {{res['errors']}}")
     rows.append((res["header"]["use_case_id"] or name, res["header"]["use_case_name"], json.dumps(req), W["requests_path"] or "bundled"))
 ids = ", ".join("'" + r[0].replace("'", "''") + "'" for r in rows)

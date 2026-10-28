@@ -4,6 +4,9 @@ For every question:
   1. CALCULATOR  - run the deployed Unity Catalog calculator (dcp_calc_run) on the benchmark inputs.
                    This is the reference answer for the agent.
   2. AGENT       - ask the Genie agent the question exactly as written (new conversation each time).
+                   Ad-hoc questions do not say whether the other calculator areas apply, so the agent's FIRST reply must
+                   give no figures and ask for the area states; the follow-up "the other calculator areas are not
+                   applicable" is then sent in the same conversation and that reply is graded against the calculator.
   3. AGENT PASS  - the agent called the calculator and reproduced its figures exactly (to the cent),
                    showed PENDING items as PENDING, and showed validation errors verbatim.
   4. ENGINE vs v4.0.2 - the same request through calculator/dcp_estimator.py at the workbook's governed
@@ -61,9 +64,13 @@ def engine_governed(case):
     return json.loads(adapter.run(calc, req, GOVERNED, case.get("overrides")))
 
 
-def ask_genie(question):
-    r = api("post", f"/api/2.0/genie/spaces/{SID}/start-conversation", {"content": question})
-    cid, mid = r["conversation_id"], r["message_id"]
+def ask_genie(question, cid=None):
+    if cid:
+        r = api("post", f"/api/2.0/genie/spaces/{SID}/conversations/{cid}/messages", {"content": question})
+        mid = r.get("message_id") or r["id"]
+    else:
+        r = api("post", f"/api/2.0/genie/spaces/{SID}/start-conversation", {"content": question})
+        cid, mid = r["conversation_id"], r["message_id"]
     for _ in range(120):
         m = api("get", f"/api/2.0/genie/spaces/{SID}/conversations/{cid}/messages/{mid}")
         if m.get("status") in ("COMPLETED", "FAILED", "CANCELLED"): break
@@ -82,6 +89,10 @@ def ask_genie(question):
 
 
 NUM = re.compile(r"-?\$?\d[\d,]*\.?\d*")
+USD = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?")
+def dollars_in(text):
+    """Dollar amounts the agent wrote (a cost shown to the user), ignoring numbers such as 'S3' or '2 hours'."""
+    return sorted({round(float(t.replace("$", "").replace(",", "").strip()), 2) for t in USD.findall(text)})
 def numbers_in(agent):
     vals = set()
     blob = agent["text"] + " " + " ".join(str(v) for r in agent["rows"] for v in r.values() if v is not None)
@@ -97,6 +108,11 @@ def money(x): return f"${x:,.2f}"
 
 # Each case: inputs, what the calculator answer is (figures + required words), and the workbook v4.0.2 expectation.
 ADHOC = dict(use_case_id="ADHOC", use_case_name="Ad-hoc", scenarios=SC4)
+AREAS = ("processing", "sql", "transfer", "storage", "model_endpoints", "one_time_model_jobs")
+FOLLOWUP = "The other calculator areas are not applicable."
+def with_areas(req):
+    """The calculator reference for an ad-hoc question: every area without inputs is NOT_APPLICABLE (the follow-up answer)."""
+    return {**req, "_areas": {a: "NOT_APPLICABLE" for a in AREAS if not req.get(a)}}
 def P(**kw): return {"component_id": "C01", "name": "Workload", **kw}
 CASES = [
  dict(n=1, q="What is the High core monthly estimate for SEND_US01?", use_case="SEND_US01",
@@ -145,7 +161,9 @@ CASES = [
       figures=lambda r: [T(r, "EXPECTED", "recurring_monthly_usd")], v4=[12.00]),
  dict(n=18, q="A scheduled batch has 2 hours per run but no runs per month. What is the cost?",
       request={**ADHOC, "processing": [P(workload_type="SCHEDULED_BATCH", runtime_hours_low=2, runtime_hours_expected=2, runtime_hours_high=2)]},
-      figures=lambda r: [], words=["PENDING", "runs per month"], v4_words=["runs per month is required"]),
+      figures=lambda r: [], words=["runs per month"], v4_words=["runs per month is required"], followup=None,
+      # New contract: no figures; the agent asks how many runs per month (no follow-up is sent).
+      no_figures=True),
  dict(n=19, q="A streaming workload needs seconds-level latency. What does it cost?",
       request={**ADHOC, "processing": [P(workload_type="CONTINUOUS_STREAMING", latency_requirement="SECONDS")]},
       figures=lambda r: [], words=["PENDING", "Pipeline"], v4_words=["SERVERLESS_PIPELINE"]),
@@ -153,7 +171,7 @@ CASES = [
       figures=lambda r: [], v4_words=["daily_gb_high must be a non-negative number"],
       # Workbook pass rule: "Error names the field". The question does not say which daily value (low/expected/high),
       # so any transfer.daily_gb_* field rejected as non-negative passes; the workbook's own input used daily_gb_high.
-      words_regex=[r"transfer\.daily_gb_(low|expected|high) must be a non-negative number"]),
+      words_regex=[r"transfer\.daily_gb_(low|expected|high) must be a non-negative number"], no_figures=True),
 ]
 
 
@@ -165,7 +183,7 @@ def summarize_calc(case, res):
     if case.get("rate_card"):
         return f"{money(res['rate'])}/DBU, {res['rate_status']}, {res['rate_source']}" if res else "no rate"
     if res is None: return "Use case not loaded - no calculator result"
-    if res["status"] == "REJECTED": return "REJECTED: " + "; ".join(res["errors"])
+    if res["status"] in ("REJECTED", "NEEDS_INPUT"): return res["status"] + ": " + "; ".join(res["errors"])
     t = {x["scenario"]: x for x in res["totals"]}
     parts = ["All-in monthly " + " / ".join(f"{s[0]} {money(t[s]['recurring_monthly_usd'])}" for s in SC4 if s in t),
              "core " + " / ".join(f"{s[0]} {money(t[s]['core_monthly_usd'])}" for s in SC4 if s in t)]
@@ -187,18 +205,36 @@ def main():
             g = calc.RegistryPricingProvider().get_rate("DATABRICKS", "ENTERPRISE_JOBS_SERVERLESS", "DBU", "US_EAST_1")
             gov = {"rate": g.rate, "rate_status": g.status, "rate_source": g.source}
         else:
+            if c.get("request") is not None:
+                c = {**c, "request": with_areas(c["request"])}
             res, gov = calculator(c), engine_governed(c)
-        figs = [] if res is None else [round(v, 2) for v in resolve(c["figures"], res)] if res.get("status", "OK") != "REJECTED" or c.get("rate_card") else []
+        figs = [] if res is None else [round(v, 2) for v in resolve(c["figures"], res)] if res.get("status", "OK") not in ("REJECTED", "NEEDS_INPUT") or c.get("rate_card") else []
         words = [] if res is None else resolve(c.get("words"), res)
         agent = ask_genie(c["q"])
+        first = None
+        if c.get("request") is not None and c.get("followup", FOLLOWUP):
+            # turn 1 must ask for the area states and show none of the figures; turn 2 is graded below
+            # graded on what the agent WROTE: any dollar amount means it estimated before the areas were confirmed
+            leaked = [v for v in dollars_in(agent["text"]) if v != 0]
+            asked = re.search(r"not applicable|applicable|\barea", agent["text"], re.I) is not None
+            first = {"text": agent["text"], "sql": agent["sql"], "pass": asked and not leaked,
+                     "notes": "; ".join(x for x in ["" if asked else "did not ask for the area states",
+                                                    f"figures shown before areas were confirmed {leaked}" if leaked else ""] if x) or "asked for the area states"}
+            agent = ask_genie(c.get("followup", FOLLOWUP), agent["conversation_id"])
         nums = numbers_in(agent)
-        blob = (agent["text"] + " " + json.dumps(agent["rows"])).lower()
+        blob = (agent["text"] + " " + json.dumps(agent["rows"])).lower().replace("_", " ")
         used_calc = any(("dcp_calc_" in s or "dcp_rate_card" in s) for s in agent["sql"])
         own_math = any(re.search(r"\b(?:recurring_monthly_usd|cost_usd|one_time_usd|first_year_usd)\s*[\*\+/-]", s) for s in agent["sql"])
         missing_figs = [f for f in figs if f not in nums]
-        missing_words = [w for w in words if w.lower() not in blob] + [
+        missing_words = [w for w in words if w.lower().replace("_", " ") not in blob] + [
             rx for rx in c.get("words_regex", []) if not re.search(rx, agent["text"] + " " + json.dumps(agent["rows"]), re.I)]
-        if res is None:   # nothing to reproduce: the agent must not invent figures
+        if c.get("no_figures") and res is not None:   # NEEDS_INPUT: the agent must ask, not estimate
+            cost_nums = [v for v in dollars_in(agent["text"]) if v != 0]
+            verdict = "PASS" if used_calc and not own_math and not missing_words and not cost_nums else "FAIL"
+            why = "; ".join(x for x in ["" if used_calc else "did not call the calculator",
+                                        f"missing words {missing_words}" if missing_words else "",
+                                        f"showed figures {sorted(cost_nums)[:6]}" if cost_nums else ""] if x) or "asked for the input, no figures"
+        elif res is None:   # nothing to reproduce: the agent must not invent figures
             ok = not any(abs(v) > 0 for v in nums if v not in (2026.0,)) or "not loaded" in blob or "no " in blob
             verdict = "PASS" if (ok and not own_math) else "FAIL"
             why = "Use case not loaded; agent must say so without inventing figures"
@@ -209,6 +245,8 @@ def main():
                 "agent did its own arithmetic in SQL" if own_math else "",
                 f"missing figures {missing_figs}" if missing_figs else "",
                 f"missing words {missing_words}" if missing_words else ""] if x) or "matches the calculator"
+        if first is not None and not first["pass"]:
+            verdict, why = "FAIL", f"turn 1: {first['notes']}; turn 2: {why}"
         # engine parity with the workbook (governed rates)
         if c.get("rate_card"):
             gfigs = [gov["rate"]]
@@ -232,7 +270,7 @@ def main():
         else:
             parity = "DIFFER"
         results.append({"n": c["n"], "question": c["q"], "calculator_answer": summarize_calc(c, res), "calculator_figures": figs,
-                        "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12], "agent_pass": verdict, "agent_notes": why,
+                        "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12], "agent_pass": verdict, "agent_notes": why, "agent_first_turn": first,
                         "engine_governed_figures": gfigs, "v4_expected_figures": v4, "parity_v4": parity, "conversation_id": agent["conversation_id"]})
         print(f"   agent {verdict} ({why}) | parity v4.0.2 {parity} gov={gfigs} v4={v4}", flush=True)
     os.makedirs(OUT, exist_ok=True)
