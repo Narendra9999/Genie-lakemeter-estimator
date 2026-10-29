@@ -1,0 +1,210 @@
+{
+  "source": "DCP_Genie_Cost_Estimator_MVP_Benchmark_Report_V2.xlsx",
+  "workbook_evidence_through": "2026-10-22",
+  "routing_proposal_date": "2026-10-29",
+  "latest_recorded_full_genie_run": {
+    "date": "2026-10-28",
+    "passed": 19,
+    "total": 20,
+    "failure": "Q13: figures were shown before calculator areas were confirmed on turn one"
+  },
+  "items": [
+    {
+      "id": "A1",
+      "status": "GREEN",
+      "requirement": "DCP v4.0.2 51-case calculator baseline",
+      "current_state": "Historical workbook evidence says 51 passed; the 51 cases/output are not in this repository, so that exact baseline is not reproducible here.",
+      "next_action": "Keep historical evidence distinct; add/import the source cases before claiming a reproducible 51-case pass.",
+      "planned_test_ids": [
+        "51-case baseline (blocked: source cases absent)"
+      ]
+    },
+    {
+      "id": "A2",
+      "status": "GREEN",
+      "requirement": "SEND_US01 named-preset parity",
+      "current_state": "Partially represented by Q1-Q5; retain as regression.",
+      "planned_test_ids": [
+        "Q1-Q5"
+      ]
+    },
+    {
+      "id": "A3",
+      "status": "GREEN",
+      "requirement": "AI_RAG_MODEL_API named-preset parity",
+      "current_state": "Q16 covers selected totals; component/confidence assertions remain incomplete.",
+      "planned_test_ids": [
+        "Q16"
+      ]
+    },
+    {
+      "id": "A4",
+      "status": "GREEN",
+      "requirement": "Direct NEW_WORKLOAD_01 calculator run",
+      "current_state": "The NEW_WORKLOAD_01 request fixture is not in the repository; exact reported figures cannot be reproduced.",
+      "planned_test_ids": [
+        "direct-request-parity (blocked: NEW_WORKLOAD_01 fixture absent)"
+      ]
+    },
+    {
+      "id": "A5",
+      "status": "GREEN",
+      "requirement": "Pasted-JSON Genie parity",
+      "current_state": "Q22 adds a synthetic raw-JSON conversation and exact scenario/ID checks; the workbook NEW_WORKLOAD_01 request is still missing.",
+      "planned_test_ids": [
+        "Q22"
+      ]
+    },
+    {
+      "id": "A6",
+      "status": "GREEN",
+      "requirement": "Incomplete request and safe pending behavior",
+      "current_state": "Q18 checks a missing run count; Q23 adds a follow-up using the supplied value. The workbook partial-pending fixture is not reproduced and needs a deliberate rebaseline.",
+      "planned_test_ids": [
+        "local-dcp-contract",
+        "missing-input-followup"
+      ]
+    },
+    {
+      "id": "A7",
+      "status": "YELLOW",
+      "requirement": "Ask a direct follow-up for each actionable missing input",
+      "current_state": "Q23 adds a direct-question and follow-up regression assertion; it has not been run against a live Genie Agent.",
+      "planned_test_ids": [
+        "Q23"
+      ]
+    },
+    {
+      "id": "A8",
+      "status": "GREEN",
+      "requirement": "Apply a short conversational update to the prior request",
+      "current_state": "Q23 adds a short conversational answer to the missing-runs request; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q23"
+      ]
+    },
+    {
+      "id": "B9",
+      "status": "YELLOW",
+      "requirement": "Open-ended estimate routes to DCP discovery, not generic sizing",
+      "current_state": "Q24 adds an open-ended DCP route case that forbids generic sizing functions; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q24"
+      ]
+    },
+    {
+      "id": "B10",
+      "status": "YELLOW",
+      "requirement": "Confirm scope without silently treating areas as out of scope",
+      "current_state": "Q13 remains the historical first-turn failure; Q21/Q27 now assert area-gate and guided-flow behavior, but are not live-tested.",
+      "planned_test_ids": [
+        "Q13",
+        "Q21",
+        "Q27"
+      ]
+    },
+    {
+      "id": "B11",
+      "status": "GREEN",
+      "requirement": "Full six-area guided intake and calculator parity",
+      "current_state": "Q27 adds a multi-turn six-area flow with all six supported components; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q27"
+      ]
+    },
+    {
+      "id": "C12",
+      "status": "YELLOW",
+      "requirement": "Preserve submitted component IDs",
+      "current_state": "Q21/Q22/Q27 compare returned line-item IDs with supplied identifiers; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q21",
+        "Q22",
+        "Q27"
+      ]
+    },
+    {
+      "id": "C13",
+      "status": "YELLOW",
+      "requirement": "Return only requested scenarios; do not add STRESS",
+      "current_state": "Q21/Q22/Q27 assert the exact requested scenario set; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q21",
+        "Q22",
+        "Q27"
+      ]
+    },
+    {
+      "id": "C18",
+      "status": "YELLOW",
+      "requirement": "Open-ended routing uses DCP discovery",
+      "current_state": "Q24 adds an open-ended DCP route case and forbids cluster-sizing functions; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q24"
+      ]
+    },
+    {
+      "id": "C19",
+      "status": "YELLOW",
+      "requirement": "Distinguish INCLUDED, EXCLUDED, UNKNOWN and NOT_APPLICABLE",
+      "current_state": "Q13/Q21/Q27 check first-turn scope and returned scenario/component results; state-wording detail still needs live review.",
+      "planned_test_ids": [
+        "Q13",
+        "Q21",
+        "Q27"
+      ]
+    },
+    {
+      "id": "C20",
+      "status": "YELLOW",
+      "requirement": "Ask a direct question from actionable missing_inputs",
+      "current_state": "Q23 checks the direct runs-per-month question and applies the answer in the follow-up; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q23"
+      ]
+    },
+    {
+      "id": "C21",
+      "status": "YELLOW",
+      "requirement": "Guided intake matches the request schema and discloses defaults",
+      "current_state": "The local schema test checks generated write-request/day defaults; Q27 exercises all areas, but live default disclosure is not yet run.",
+      "planned_test_ids": [
+        "local-intake-schema",
+        "Q27"
+      ]
+    },
+    {
+      "id": "C22",
+      "status": "YELLOW",
+      "requirement": "Reuse recorded answers without repeating questions",
+      "current_state": "Q23 adds an answer-reuse follow-up; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q23"
+      ]
+    },
+    {
+      "id": "C23",
+      "status": "YELLOW",
+      "requirement": "Explain totals use unrounded line items",
+      "current_state": "Q4 now asserts unrounded-line-item wording; live behavior is not yet run.",
+      "planned_test_ids": [
+        "Q4"
+      ]
+    },
+    {
+      "id": "D14",
+      "status": "GRAY",
+      "requirement": "Hackathon portfolio boundary and representative tiers",
+      "current_state": "Not tested. Keep unclaimed until a representative portfolio fixture and evidence are added.",
+      "planned_test_ids": []
+    },
+    {
+      "id": "D15",
+      "status": "GRAY",
+      "requirement": "DIWO LAC band-weighted external sizing boundary",
+      "current_state": "Not tested. Keep unclaimed until the external sizing inputs and approval boundary are tested.",
+      "planned_test_ids": []
+    }
+  ],
+  "test_ids_are": "Planned/local/live test targets, not a claim that those tests have passed."
+}

@@ -1,17 +1,9 @@
-"""DCP agent benchmark (workbook tab C, 20 questions).
+"""DCP Genie benchmark: 20 numeric regression cases plus routing/coverage cases Q21-Q27.
 
-For every question:
-  1. CALCULATOR  - run the deployed Unity Catalog calculator (dcp_calc_run) on the benchmark inputs.
-                   This is the reference answer for the agent.
-  2. AGENT       - ask the Genie agent the question exactly as written (new conversation each time).
-                   Ad-hoc questions do not say whether the other calculator areas apply, so the agent's FIRST reply must
-                   give no figures and ask for the area states; the follow-up "the other calculator areas are not
-                   applicable" is then sent in the same conversation and that reply is graded against the calculator.
-  3. AGENT PASS  - the agent called the calculator and reproduced its figures exactly (to the cent),
-                   showed PENDING items as PENDING, and showed validation errors verbatim.
-  4. ENGINE vs v4.0.2 - the same request through calculator/dcp_estimator.py at the workbook's governed
-                   rates, compared with the workbook's expected answer. This separates rate-card
-                   differences (list vs governed) from engine-version differences (v3.8 vs v4.0.2).
+The first 20 cases compare Genie with the deployed DCP calculator and the local v4.0.2 engine. The added cases check
+area-gate behavior, exact scenarios and component IDs, raw-JSON parity, missing-input follow-up, explicit DCP routing,
+catalog discovery, unsupported coverage, and a six-area guided intake. Route-only cases are not calculator-parity tests.
+The latest recorded full run is tracked in benchmark/coverage_map.json; no run is performed during build or unit tests.
 
 Usage: python3 run_benchmark.py <profile> <warehouse_id> <space_id> <catalog.schema> <out_dir> [question numbers]
 """
@@ -107,13 +99,46 @@ def L(res, sc, cid, k="cost_usd"): return next(l[k] for l in res["line_items"] i
 def money(x): return f"${x:,.2f}"
 
 # Each case: inputs, what the calculator answer is (figures + required words), and the workbook v4.0.2 expectation.
-ADHOC = dict(use_case_id="ADHOC", use_case_name="Ad-hoc", scenarios=SC4)
+ADHOC = dict(use_case_id="ADHOC", use_case_name="Ad-hoc", scenarios=["LOW", "EXPECTED", "HIGH"])
 AREAS = ("processing", "sql", "transfer", "storage", "model_endpoints", "one_time_model_jobs")
 FOLLOWUP = "The other calculator areas are not applicable."
 def with_areas(req):
     """The calculator reference for an ad-hoc question: every area without inputs is NOT_APPLICABLE (the follow-up answer)."""
     return {**req, "_areas": {a: "NOT_APPLICABLE" for a in AREAS if not req.get(a)}}
 def P(**kw): return {"component_id": "C01", "name": "Workload", **kw}
+ROUTING_REQ = {
+    **ADHOC,
+    "use_case_id": "NEW-WORKLOAD-01",
+    "use_case_name": "Identifier and scenario preservation",
+    "processing": [{"component_id": "NEW-C01", "name": "Nightly batch", "workload_type": "SCHEDULED_BATCH",
+                    "runtime_hours_low": 1, "runtime_hours_expected": 1, "runtime_hours_high": 1, "runs_per_month": 20}],
+    "sql": {"component_id": "NEW-SQL", "name": "Reporting", "concurrent_users": 8, "working_days_per_month": 20},
+}
+JSON_ROUTING_REQ = {**ROUTING_REQ, "_areas": {a: "NOT_APPLICABLE" for a in AREAS if a not in ("processing", "sql")}}
+FULL_GUIDED_REQ = {
+    **ADHOC,
+    "use_case_id": "GUIDED-SIX-AREA",
+    "use_case_name": "Six-area guided estimate",
+    "processing": [{"component_id": "GUIDED-C01", "name": "Scheduled batch", "workload_type": "SCHEDULED_BATCH",
+                    "runtime_hours_low": 1, "runtime_hours_expected": 1, "runtime_hours_high": 1, "runs_per_month": 20}],
+    "sql": {"component_id": "GUIDED-SQL", "name": "SQL reporting", "concurrent_users": 10, "working_days_per_month": 20},
+    "transfer": {"daily_gb_low": 5, "daily_gb_expected": 5, "daily_gb_high": 5, "transfer_days_per_month": 20, "initial_transfer_gb": 500},
+    "storage": {"retained_tb": 1, "files_per_day": 100, "encrypted_files_per_day": 10, "kms_keys": 1, "days_per_month": 30,
+                "s3_write_requests_per_file": 1, "s3_read_requests_per_file": 2, "kms_requests_per_encrypted_file": 1,
+                "request_assumptions_confirmed": True},
+    "model_endpoints": [{"component_id": "GUIDED-MODEL", "model": "gpt-5-4", "role": "Model API", "calls_per_day": 100,
+                         "input_tokens_low": 1000, "input_tokens_expected": 1000, "input_tokens_high": 1000,
+                         "output_tokens_low": 100, "output_tokens_expected": 100, "output_tokens_high": 100}],
+    "one_time_model_jobs": [{"component_id": "GUIDED-INDEX", "model": "gpt-5-4", "description": "Initial indexing",
+                             "input_tokens_low": 1000, "input_tokens_high": 1000,
+                             "output_tokens_low": 100, "output_tokens_high": 100, "api_calls": 100}],
+}
+GUIDED_ANSWER = ("All six areas are included. Processing: scheduled batch, 1 hour per run, 20 runs/month. "
+                 "SQL: 10 concurrent users, 20 working days. DataSync: 5 GB/day for 20 days and a 500 GB one-time migration. "
+                 "S3/KMS: 1 TB retained, 100 files/day, 10 encrypted files/day, 1 KMS key, 1 write and 2 reads per file, "
+                 "1 KMS request per encrypted file; these request values are confirmed. Recurring model API: gpt-5-4, "
+                 "100 calls/day, 1,000 input and 100 output tokens/call. One-time indexing: gpt-5-4, 1,000 input and 100 output tokens, 100 API calls. "
+                 "Return LOW, EXPECTED and HIGH only; show line items and the area states.")
 CASES = [
  dict(n=1, q="What is the High core monthly estimate for SEND_US01?", use_case="SEND_US01",
       figures=lambda r: [T(r, "HIGH", "core_monthly_usd")], v4=[531.78]),
@@ -122,7 +147,8 @@ CASES = [
  dict(n=3, q="What is the High all-in monthly cost for SEND_US01 at 10 TB?", use_case="SEND_US01",
       figures=lambda r: [T(r, "HIGH", "recurring_monthly_usd")], v4=[762.81]),
  dict(n=4, q="What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?", use_case="SEND_US01",
-      figures=lambda r: [T(r, "HIGH", "first_year_usd"), T(r, "HIGH", "one_time_usd")], v4=[9278.76, 125.00]),
+      figures=lambda r: [T(r, "HIGH", "first_year_usd"), T(r, "HIGH", "one_time_usd")], v4=[9278.76, 125.00],
+      words_regex=[r"unrounded.*line items"]),
  dict(n=5, q="If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?", use_case="SEND_US01",
       overrides={"retained_storage_tb": 8, "migration_gb": 8000},
       figures=lambda r: [T(r, "HIGH", "recurring_monthly_usd"), T(r, "HIGH", "first_year_usd"), T(r, "HIGH", "one_time_usd")], v4=[716.81, 8701.76, 100.00]),
@@ -172,6 +198,26 @@ CASES = [
       # Workbook pass rule: "Error names the field". The question does not say which daily value (low/expected/high),
       # so any transfer.daily_gb_* field rejected as non-negative passes; the workbook's own input used daily_gb_high.
       words_regex=[r"transfer\.daily_gb_(low|expected|high) must be a non-negative number"], no_figures=True),
+ dict(n=21, q="Estimate this workload and show line items. Return only LOW, EXPECTED and HIGH; keep component IDs NEW-C01 and NEW-SQL.",
+      request=ROUTING_REQ, figures=lambda r: [], followup=FOLLOWUP,
+      expected_scenarios=["LOW", "EXPECTED", "HIGH"], expected_component_ids=["NEW-C01", "NEW-SQL"]),
+ dict(n=22, q="Estimate this request exactly as supplied:\\n" + json.dumps(JSON_ROUTING_REQ),
+      request=JSON_ROUTING_REQ, figures=lambda r: [], followup=None,
+      expected_scenarios=["LOW", "EXPECTED", "HIGH"], expected_component_ids=["NEW-C01", "NEW-SQL"]),
+ dict(n=23, q="A scheduled batch takes 2 hours per run. What is the monthly cost?",
+      request={**ADHOC, "processing": [P(workload_type="SCHEDULED_BATCH", runtime_hours_low=2, runtime_hours_expected=2, runtime_hours_high=2, runs_per_month=30)]},
+      figures=lambda r: [T(r, "EXPECTED", "recurring_monthly_usd")], followup="30 runs per month. The other calculator areas are not applicable.",
+      required_first_turn_words=["runs per month"], direct_first_turn_question=True),
+ dict(n=24, q="I need a DCP estimate for a daily scheduled batch. What information do you need?", route_only=True,
+      route_must_contain=["run"], route_must_not_functions=["size_cluster", "estimate_sized_workload", "estimate_jobs_classic_cost"]),
+ dict(n=25, q="What cost categories can you estimate? I need SQL and storage; let me choose more than one.", route_only=True,
+      route_required_functions=["estimator_catalog"], route_must_contain=["SQL", "storage"]),
+ dict(n=26, q="Can you estimate AI Gateway? If it is not covered, tell me rather than guessing a cost.", route_only=True,
+      route_required_functions=["estimator_catalog"], route_must_contain=["AI Gateway"], route_must_contain_any=["not ported", "unsupported", "PENDING"]),
+ dict(n=27, q="Help me build a DCP estimate covering processing, SQL, DataSync, S3/KMS, recurring model API use, and one-time indexing.",
+      request=FULL_GUIDED_REQ, figures=lambda r: [], followup=GUIDED_ANSWER, expect_area_question=False,
+      expected_scenarios=["LOW", "EXPECTED", "HIGH"],
+      expected_component_ids=["GUIDED-C01", "GUIDED-SQL", "GUIDED-MODEL", "GUIDED-INDEX"]),
 ]
 
 
@@ -199,6 +245,26 @@ def main():
     for c in CASES:
         if ONLY and c["n"] not in ONLY: continue
         print(f"Q{c['n']} ...", flush=True)
+        if c.get("route_only"):
+            agent = ask_genie(c["q"])
+            blob = (agent["text"] + " " + json.dumps(agent["rows"])).lower()
+            sql_blob = "\n".join(agent["sql"]).lower()
+            missing = [term for term in c.get("route_must_contain", []) if term.lower() not in blob]
+            if c.get("route_must_contain_any") and not any(term.lower() in blob for term in c["route_must_contain_any"]):
+                missing.append("one of: " + ", ".join(c["route_must_contain_any"]))
+            missing += [f"missing SQL function {name}" for name in c.get("route_required_functions", []) if name.lower() not in sql_blob]
+            forbidden = [name for name in c.get("route_must_not_functions", []) if name.lower() in sql_blob]
+            leaked = [v for v in dollars_in(agent["text"]) if v != 0]
+            verdict = "PASS" if not missing and not forbidden and not leaked else "FAIL"
+            why = "; ".join(x for x in [f"missing {missing}" if missing else "", f"used forbidden functions {forbidden}" if forbidden else "",
+                                        f"showed figures {leaked}" if leaked else ""] if x) or "route/coverage behavior matched"
+            results.append({"n": c["n"], "question": c["q"], "calculator_answer": "Route-only acceptance case", "calculator_figures": [],
+                            "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12],
+                            "agent_pass": verdict, "agent_notes": why, "agent_first_turn": None,
+                            "engine_governed_figures": [], "v4_expected_figures": [], "parity_v4": "NOT_APPLICABLE",
+                            "conversation_id": agent["conversation_id"]})
+            print(f"   route {verdict} ({why})", flush=True)
+            continue
         if c.get("rate_card"):
             rr = sql(f"SELECT rate, status, source FROM {FQ}.dcp_rate_card WHERE provider='DATABRICKS' AND sku='ENTERPRISE_JOBS_SERVERLESS' AND region='US_EAST_1'")
             res = {"rate": float(rr[0][0]), "rate_status": rr[0][1], "rate_source": rr[0][2]} if rr else None
@@ -213,13 +279,20 @@ def main():
         agent = ask_genie(c["q"])
         first = None
         if c.get("request") is not None and c.get("followup", FOLLOWUP):
-            # turn 1 must ask for the area states and show none of the figures; turn 2 is graded below
-            # graded on what the agent WROTE: any dollar amount means it estimated before the areas were confirmed
+            # Turn one must request unresolved scope and any explicitly tested missing inputs, without figures.
             leaked = [v for v in dollars_in(agent["text"]) if v != 0]
             asked = re.search(r"not applicable|applicable|\barea", agent["text"], re.I) is not None
-            first = {"text": agent["text"], "sql": agent["sql"], "pass": asked and not leaked,
-                     "notes": "; ".join(x for x in ["" if asked else "did not ask for the area states",
-                                                    f"figures shown before areas were confirmed {leaked}" if leaked else ""] if x) or "asked for the area states"}
+            expect_areas = c.get("expect_area_question", True)
+            missing_first = [term for term in c.get("required_first_turn_words", []) if term.lower() not in agent["text"].lower()]
+            direct_question = ("?" in agent["text"] or re.search(r"how many|what is|please provide|which", agent["text"], re.I) is not None)
+            if c.get("direct_first_turn_question") and not direct_question:
+                missing_first.append("a direct question")
+            first_pass = (asked or not expect_areas) and not leaked and not missing_first
+            first_notes = ["" if asked or not expect_areas else "did not ask for the area states",
+                           f"figures shown before areas were confirmed {leaked}" if leaked else "",
+                           f"missing first-turn requirements {missing_first}" if missing_first else ""]
+            first = {"text": agent["text"], "sql": agent["sql"], "pass": first_pass,
+                     "notes": "; ".join(x for x in first_notes if x) or "asked targeted questions without figures"}
             agent = ask_genie(c.get("followup", FOLLOWUP), agent["conversation_id"])
         nums = numbers_in(agent)
         blob = (agent["text"] + " " + json.dumps(agent["rows"])).lower().replace("_", " ")
@@ -228,6 +301,13 @@ def main():
         missing_figs = [f for f in figs if f not in nums]
         missing_words = [w for w in words if w.lower().replace("_", " ") not in blob] + [
             rx for rx in c.get("words_regex", []) if not re.search(rx, agent["text"] + " " + json.dumps(agent["rows"]), re.I)]
+        actual_scenarios = {str(row.get("scenario")).upper() for row in agent["rows"] if row.get("scenario") is not None}
+        if c.get("expected_scenarios") is not None and actual_scenarios != {x.upper() for x in c["expected_scenarios"]}:
+            missing_words.append(f"scenario set {sorted(actual_scenarios)} != expected {sorted(c['expected_scenarios'])}")
+        actual_ids = {str(row.get("component_id")) for row in agent["rows"] if row.get("component_id") is not None}
+        missing_ids = [x for x in c.get("expected_component_ids", []) if x not in actual_ids]
+        if missing_ids:
+            missing_words.append(f"missing component ids {missing_ids}")
         if c.get("no_figures") and res is not None:   # NEEDS_INPUT: the agent must ask, not estimate
             cost_nums = [v for v in dollars_in(agent["text"]) if v != 0]
             verdict = "PASS" if used_calc and not own_math and not missing_words and not cost_nums else "FAIL"
@@ -263,6 +343,8 @@ def main():
             parity = "NOT LOADED"
         elif gov.get("status") == "REJECTED":
             parity = "MATCH" if any(w.lower() in json.dumps(gov).lower() for w in c.get("v4_words", [])) else "DIFFER"
+        elif not v4 and not c.get("v4_words"):
+            parity = "NOT_APPLICABLE"
         elif v4 and gfigs and len(gfigs) == len(v4[:len(gfigs)]) and all(abs(a - b) < 0.005 for a, b in zip(gfigs, v4)):
             parity = "MATCH"
         elif not v4 and not gfigs and any(w.lower() in json.dumps(gov).lower() for w in c.get("v4_words", [])):

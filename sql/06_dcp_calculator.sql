@@ -13,9 +13,8 @@ LANGUAGE PYTHON
 COMMENT 'DCP Smart Estimation Calculator v4.0.2 (notebooks/dcp_estimator.py, embedded verbatim) as a Unity Catalog function. Runs the input check first (named = true: named use case, validate only; false: ad-hoc or pasted JSON, every required input; NULL: no check) and returns status NEEDS_INPUT with one question per missing or invalid input instead of pricing. Otherwise builds the request (preset or JSON, plus what-if overrides), prices it only with the supplied rate card, and returns the full result JSON or status REJECTED with the calculator validation errors. Internal: call through dcp_calc_totals / dcp_calc_line_items / dcp_calc_details.'
 AS $$
 import sys, types, textwrap
-KEY = "607ed89936"
-# Unity Catalog indents the function body, including these strings; dedent restores the files exactly.
-DCP_ESTIMATOR_SOURCE = r'''
+KEY = "180585ea5c"
+DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
 ======================================================
@@ -1644,8 +1643,9 @@ def calibrate_from_system_tables(spark, workspace_id: str, lookback_days: int = 
     except Exception:
         out.source += " | concurrency unavailable"
     return out
+
 '''
-DCP_ADAPTER_SOURCE = r'''
+DCP_SOURCE_1 = r'''
 """Thin adapter between the DCP calculator (notebooks/dcp_estimator.py) and Unity Catalog / Genie.
 
 It does no math. It only:
@@ -2125,13 +2125,14 @@ def intake_questions(m):
             rows.append((area, f_.name, m._type_text(f_), req, None if default is None else json.dumps(default),
                          QUESTIONS.get(f_.name) or f"{f_.name.replace('_', ' ').capitalize()}?"))
     return rows
+
 '''
 if "dcp_adapter_" + KEY not in sys.modules:
-    for name, code in (("dcp_estimator", DCP_ESTIMATOR_SOURCE), ("dcp_adapter", DCP_ADAPTER_SOURCE)):
+    for name, code in (('dcp_estimator', DCP_SOURCE_0), ('dcp_adapter', DCP_SOURCE_1)):
         mod = types.ModuleType(name)
         sys.modules[name] = mod
-        exec(compile(textwrap.dedent(code), name + ".py", "exec"), mod.__dict__)
-        sys.modules[name + "_" + KEY] = mod
+        exec(compile(textwrap.dedent(code), name + '.py', 'exec'), mod.__dict__)
+        sys.modules[name + '_' + KEY] = mod
 return sys.modules["dcp_adapter_" + KEY].run(sys.modules["dcp_estimator_" + KEY], request, rates, overrides, named)
 $$
 -- @@
@@ -2141,9 +2142,8 @@ LANGUAGE PYTHON
 COMMENT 'DCP input check (calculator v4.0.2, calculator/dcp_adapter.py check): lists every required input that is missing (no calculator default, so the cost would be PENDING), every value of the wrong type or out of range, and anything the calculator would reject. Returns status READY or NEEDS_INPUT. Internal: call through dcp_check_inputs.'
 AS $$
 import sys, types, textwrap
-KEY = "607ed89936"
-# Unity Catalog indents the function body, including these strings; dedent restores the files exactly.
-DCP_ESTIMATOR_SOURCE = r'''
+KEY = "180585ea5c"
+DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
 ======================================================
@@ -3772,8 +3772,9 @@ def calibrate_from_system_tables(spark, workspace_id: str, lookback_days: int = 
     except Exception:
         out.source += " | concurrency unavailable"
     return out
+
 '''
-DCP_ADAPTER_SOURCE = r'''
+DCP_SOURCE_1 = r'''
 """Thin adapter between the DCP calculator (notebooks/dcp_estimator.py) and Unity Catalog / Genie.
 
 It does no math. It only:
@@ -4253,13 +4254,14 @@ def intake_questions(m):
             rows.append((area, f_.name, m._type_text(f_), req, None if default is None else json.dumps(default),
                          QUESTIONS.get(f_.name) or f"{f_.name.replace('_', ' ').capitalize()}?"))
     return rows
+
 '''
 if "dcp_adapter_" + KEY not in sys.modules:
-    for name, code in (("dcp_estimator", DCP_ESTIMATOR_SOURCE), ("dcp_adapter", DCP_ADAPTER_SOURCE)):
+    for name, code in (('dcp_estimator', DCP_SOURCE_0), ('dcp_adapter', DCP_SOURCE_1)):
         mod = types.ModuleType(name)
         sys.modules[name] = mod
-        exec(compile(textwrap.dedent(code), name + ".py", "exec"), mod.__dict__)
-        sys.modules[name + "_" + KEY] = mod
+        exec(compile(textwrap.dedent(code), name + '.py', 'exec'), mod.__dict__)
+        sys.modules[name + '_' + KEY] = mod
 return sys.modules["dcp_adapter_" + KEY].run_check(sys.modules["dcp_estimator_" + KEY], request, overrides, named)
 $$
 -- @@
@@ -4282,9 +4284,14 @@ CREATE OR REPLACE FUNCTION __FQ__.dcp_request(
   p_storage_days_per_month INT DEFAULT NULL, p_s3_write_requests_per_file DOUBLE DEFAULT NULL,
   p_kms_requests_per_encrypted_file DOUBLE DEFAULT NULL, p_serving_mode STRING DEFAULT NULL, p_model_days_per_month INT DEFAULT NULL,
   p_included_areas STRING DEFAULT NULL, p_excluded_areas STRING DEFAULT NULL, p_unknown_areas STRING DEFAULT NULL,
-  p_not_applicable_areas STRING DEFAULT NULL)
+  p_not_applicable_areas STRING DEFAULT NULL,
+  p_one_time_model STRING DEFAULT NULL, p_one_time_component_id STRING DEFAULT NULL, p_one_time_description STRING DEFAULT NULL,
+  p_one_time_input_tokens_low DOUBLE DEFAULT NULL, p_one_time_input_tokens_high DOUBLE DEFAULT NULL,
+  p_one_time_output_tokens_low DOUBLE DEFAULT NULL, p_one_time_output_tokens_high DOUBLE DEFAULT NULL,
+  p_one_time_api_calls DOUBLE DEFAULT NULL, p_one_time_serving_mode STRING DEFAULT NULL,
+  p_sql_component_id STRING DEFAULT NULL, p_model_component_id STRING DEFAULT NULL)
 RETURNS STRING
-COMMENT 'Build a DCP calculator request (EstimateRequest JSON) for an ad-hoc question with named arguments. Pass ONLY what the user stated - blanks stay PENDING, never zero. One stated runtime per run applies to every scenario. Sections: processing (p_workload_type CONTINUOUS_STREAMING | EVENT_DRIVEN_BATCH | SCHEDULED_BATCH | ML_TRAINING | BATCH_SCORING, runtimes, runs, DBU/hour, latency, GPU/custom flags), SQL (p_concurrent_users...), transfer (p_daily_gb_*, p_initial_transfer_gb), storage (p_retained_tb, files, KMS, reads per file), model API (p_model, p_calls_per_day, tokens per call). p_scenarios: comma list, default LOW,EXPECTED,HIGH - add STRESS only when the user asks for it. p_component_id / p_use_case_id / p_use_case_name: the user''s own identifiers. AREAS (every area must be confirmed before an estimate is final): an area with inputs is included; give the state of each other area as a comma list of area names in p_excluded_areas, p_unknown_areas, p_not_applicable_areas (or p_included_areas, then its inputs are required). Area names: processing, sql, transfer, storage, model_endpoints, one_time_model_jobs. Use as: SELECT * FROM dcp_calc_totals(p_request => dcp_request(p_workload_type => ''SCHEDULED_BATCH'', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => ''sql,transfer,storage,model_endpoints,one_time_model_jobs''))'
+COMMENT 'Build a DCP calculator request (EstimateRequest JSON) for an ad-hoc question with named arguments. Pass ONLY what the user stated - blanks stay PENDING, never zero. One stated runtime per run applies to every scenario. Supports processing, SQL, DataSync, S3/KMS, recurring model API calls, and one-time model jobs. Use p_component_id for processing, p_sql_component_id for SQL, p_model_component_id for recurring model calls, and p_one_time_component_id for one-time jobs; preserve supplied IDs. One-time token inputs use p_one_time_model, p_one_time_input_tokens_low/high and p_one_time_output_tokens_low/high. p_scenarios defaults to LOW,EXPECTED,HIGH; add STRESS only when requested. Confirm all six areas through INCLUDED, EXCLUDED, UNKNOWN or NOT_APPLICABLE parameters. Use as: SELECT * FROM dcp_calc_totals(p_request => dcp_request(p_workload_type => ''SCHEDULED_BATCH'', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => ''sql,transfer,storage,model_endpoints,one_time_model_jobs''))'
 RETURN to_json(named_struct(
   'use_case_id', p_use_case_id, 'use_case_name', p_use_case_name,
   'scenarios', transform(split(coalesce(CASE WHEN upper(trim(p_scenarios)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_scenarios END, 'LOW,EXPECTED,HIGH'), ','), x -> upper(trim(x))),
@@ -4292,8 +4299,12 @@ RETURN to_json(named_struct(
   '_areas', map_from_entries(concat(transform(filter(split(lower(coalesce(CASE WHEN upper(trim(p_included_areas)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_included_areas END, '')), '[ ,;]+'), x -> x <> ''), x -> struct(x AS key, 'INCLUDED' AS value)), transform(filter(split(lower(coalesce(CASE WHEN upper(trim(p_excluded_areas)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_excluded_areas END, '')), '[ ,;]+'), x -> x <> ''), x -> struct(x AS key, 'EXCLUDED' AS value)),
                                     transform(filter(split(lower(coalesce(CASE WHEN upper(trim(p_unknown_areas)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_unknown_areas END, '')), '[ ,;]+'), x -> x <> ''), x -> struct(x AS key, 'UNKNOWN' AS value)), transform(filter(split(lower(coalesce(CASE WHEN upper(trim(p_not_applicable_areas)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_not_applicable_areas END, '')), '[ ,;]+'), x -> x <> ''), x -> struct(x AS key, 'NOT_APPLICABLE' AS value)))),
   'region', upper(replace(CASE WHEN upper(trim(p_region)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_region END, '-', '_')),
-  'processing', CASE WHEN CASE WHEN upper(trim(p_workload_type)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_workload_type END IS NOT NULL THEN array(named_struct(
-      'component_id', coalesce(CASE WHEN upper(trim(p_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_component_id END, 'ADHOC-C01'), 'name', initcap(replace(lower(p_workload_type), '_', ' ')), 'workload_type', upper(p_workload_type),
+  'processing', CASE WHEN CASE WHEN upper(trim(p_workload_type)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_workload_type END IS NOT NULL OR CASE WHEN upper(trim(p_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_component_id END IS NOT NULL OR p_quantity IS NOT NULL
+        OR p_runtime_hours_low IS NOT NULL OR p_runtime_hours_expected IS NOT NULL OR p_runtime_hours_high IS NOT NULL
+        OR p_runs_per_month IS NOT NULL OR p_dbu_per_hour IS NOT NULL OR CASE WHEN upper(trim(p_latency_requirement)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_latency_requirement END IS NOT NULL
+        OR CASE WHEN upper(trim(p_streaming_mode)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_streaming_mode END IS NOT NULL OR p_requires_gpu IS NOT NULL OR p_requires_custom_runtime IS NOT NULL
+        OR p_requires_custom_networking IS NOT NULL OR CASE WHEN upper(trim(p_pattern)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_pattern END IS NOT NULL THEN array(named_struct(
+      'component_id', coalesce(CASE WHEN upper(trim(p_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_component_id END, 'ADHOC-C01'), 'name', coalesce(initcap(replace(lower(p_workload_type), '_', ' ')), 'Workload'), 'workload_type', upper(p_workload_type),
       'pattern', upper(CASE WHEN upper(trim(p_pattern)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_pattern END),
       'quantity', p_quantity,
       'runtime_hours_low', coalesce(p_runtime_hours_low, p_runtime_hours_expected),
@@ -4305,21 +4316,33 @@ RETURN to_json(named_struct(
       'latency_requirement', upper(CASE WHEN upper(trim(p_latency_requirement)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_latency_requirement END), 'streaming_mode', upper(CASE WHEN upper(trim(p_streaming_mode)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_streaming_mode END),
       'requires_gpu', p_requires_gpu, 'requires_custom_runtime', p_requires_custom_runtime,
       'requires_custom_networking', p_requires_custom_networking)) END,
-  'sql', CASE WHEN p_concurrent_users IS NOT NULL THEN named_struct(
-      'component_id', 'ADHOC-SQL', 'name', 'SQL reporting', 'concurrent_users', p_concurrent_users,
+  'sql', CASE WHEN p_concurrent_users IS NOT NULL OR p_total_users IS NOT NULL OR p_working_days_per_month IS NOT NULL OR CASE WHEN upper(trim(p_sql_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_sql_component_id END IS NOT NULL THEN named_struct(
+      'component_id', coalesce(CASE WHEN upper(trim(p_sql_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_sql_component_id END, 'ADHOC-SQL'), 'name', 'SQL reporting', 'concurrent_users', p_concurrent_users,
       'total_users', p_total_users, 'working_days_per_month', p_working_days_per_month) END,
   'transfer', CASE WHEN coalesce(p_daily_gb_low, p_daily_gb_expected, p_daily_gb_high, p_initial_transfer_gb) IS NOT NULL THEN named_struct(
       'daily_gb_low', coalesce(p_daily_gb_low, p_daily_gb_expected), 'daily_gb_expected', p_daily_gb_expected,
       'daily_gb_high', coalesce(p_daily_gb_high, p_daily_gb_expected),
       'transfer_days_per_month', p_transfer_days_per_month, 'initial_transfer_gb', p_initial_transfer_gb) END,
-  'storage', CASE WHEN coalesce(p_retained_tb, p_files_per_day, p_encrypted_files_per_day, p_kms_keys, p_s3_read_requests_per_file) IS NOT NULL THEN named_struct(
+  'storage', CASE WHEN coalesce(p_retained_tb, p_files_per_day, p_encrypted_files_per_day, p_kms_keys, p_s3_read_requests_per_file,
+                               p_s3_write_requests_per_file, p_kms_requests_per_encrypted_file, p_storage_days_per_month) IS NOT NULL THEN named_struct(
       'retained_tb', p_retained_tb, 'files_per_day', p_files_per_day, 'encrypted_files_per_day', p_encrypted_files_per_day,
       'kms_keys', p_kms_keys, 's3_read_requests_per_file', p_s3_read_requests_per_file, 'days_per_month', p_storage_days_per_month,
       's3_write_requests_per_file', p_s3_write_requests_per_file, 'kms_requests_per_encrypted_file', p_kms_requests_per_encrypted_file) END,
-  'model_endpoints', CASE WHEN CASE WHEN upper(trim(p_model)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_model END IS NOT NULL THEN array(named_struct(
-      'component_id', 'ADHOC-MODEL-01', 'model', p_model, 'role', 'Model API', 'calls_per_day', p_calls_per_day, 'serving_mode', upper(CASE WHEN upper(trim(p_serving_mode)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_serving_mode END),
+  'model_endpoints', CASE WHEN CASE WHEN upper(trim(p_model)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_model END IS NOT NULL OR CASE WHEN upper(trim(p_model_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_model_component_id END IS NOT NULL OR p_calls_per_day IS NOT NULL
+        OR p_input_tokens_low IS NOT NULL OR p_input_tokens_expected IS NOT NULL OR p_input_tokens_high IS NOT NULL
+        OR p_output_tokens_low IS NOT NULL OR p_output_tokens_expected IS NOT NULL OR p_output_tokens_high IS NOT NULL THEN array(named_struct(
+      'component_id', coalesce(CASE WHEN upper(trim(p_model_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_model_component_id END, 'ADHOC-MODEL-01'), 'model', p_model, 'role', 'Model API', 'calls_per_day', p_calls_per_day, 'serving_mode', coalesce(upper(CASE WHEN upper(trim(p_serving_mode)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_serving_mode END), 'PAY_PER_TOKEN'),
       'input_tokens_low', p_input_tokens_low, 'input_tokens_expected', p_input_tokens_expected, 'input_tokens_high', p_input_tokens_high,
-      'output_tokens_low', p_output_tokens_low, 'output_tokens_expected', p_output_tokens_expected, 'output_tokens_high', p_output_tokens_high)) END))
+      'output_tokens_low', p_output_tokens_low, 'output_tokens_expected', p_output_tokens_expected, 'output_tokens_high', p_output_tokens_high)) END,
+  'one_time_model_jobs', CASE WHEN CASE WHEN upper(trim(p_one_time_model)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_model END IS NOT NULL OR CASE WHEN upper(trim(p_one_time_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_component_id END IS NOT NULL
+        OR CASE WHEN upper(trim(p_one_time_description)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_description END IS NOT NULL OR p_one_time_input_tokens_low IS NOT NULL OR p_one_time_input_tokens_high IS NOT NULL
+        OR p_one_time_output_tokens_low IS NOT NULL OR p_one_time_output_tokens_high IS NOT NULL OR p_one_time_api_calls IS NOT NULL
+        THEN array(named_struct(
+      'component_id', coalesce(CASE WHEN upper(trim(p_one_time_component_id)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_component_id END, 'ADHOC-ONE-TIME-01'), 'model', p_one_time_model,
+      'description', coalesce(CASE WHEN upper(trim(p_one_time_description)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_description END, 'One-time model job'),
+      'input_tokens_low', p_one_time_input_tokens_low, 'input_tokens_high', p_one_time_input_tokens_high,
+      'output_tokens_low', p_one_time_output_tokens_low, 'output_tokens_high', p_one_time_output_tokens_high,
+      'api_calls', p_one_time_api_calls, 'serving_mode', coalesce(upper(CASE WHEN upper(trim(p_one_time_serving_mode)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_one_time_serving_mode END), 'PAY_PER_TOKEN'))) END))
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_calc_run(p_use_case STRING DEFAULT NULL, p_request STRING DEFAULT NULL, p_overrides STRING DEFAULT NULL)
 RETURNS TABLE(use_case_id STRING, result STRING)

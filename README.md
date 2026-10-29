@@ -1,8 +1,9 @@
 # Lakemeter → Genie Cost Estimator
 
 A Genie Agent that answers Databricks cost questions in natural language: DCP Smart Estimation (the DCP calculator,
-embedded unchanged), workload sizing, and Lakemeter OSS cost estimates for configured workloads — all as Unity Catalog
-functions at governed account rates. No app, Marketplace or Lakebase required.
+embedded unchanged), workload sizing, and Lakemeter OSS cost estimates for configured workloads — exposed as Unity Catalog
+functions using governed account price cards where available and explicit reference/PENDING statuses otherwise. No app,
+Marketplace or Lakebase required.
 
 ## Install in one notebook (recommended)
 
@@ -29,12 +30,25 @@ It is self-contained — the only other thing to upload is the `pricing_data/` f
 | `smoke_test` | Asks the new agent a DCP question and prints the answer |
 
 The notebook prints the agent URL and its MCP endpoint (`/api/2.0/mcp/genie/<space_id>`) for the Copilot connection.
-Re-running is safe (every step is idempotent). The notebook is generated — after changing the calculator, the SQL
-or the agent definition, rebuild it:
+Re-running is safe (every step is idempotent). After changing calculator code, product coverage, or agent instructions, regenerate all derived files:
 
 ```
-python3 calculator/build_sql.py && python3 calculator/build_notebook.py && python3 calculator/build_setup.py
+python3 calculator/build_all.py
 ```
+
+The product catalog is maintained in `genie/catalog/estimator_catalog.json` and exposed to Genie through the generated
+`estimator_catalog()` function. It records implementation and validation separately: function availability does not mean
+that a product path has been benchmarked. Catalog categories guide discovery; the user's request and supported capability
+select the calculation path.
+
+Run offline contract checks before rebuilding:
+
+```
+python3 -I -m unittest discover -s tests -v
+python3 -I calculator/build_all.py
+```
+
+These checks do not deploy or update a live Genie Agent. Run the `setup_agent` job only after reviewing the generated agent definition.
 
 ## Deploy with a bundle (jobs for setup and maintenance)
 
@@ -214,8 +228,10 @@ tables; schedule monthly.
 | `sql/06_dcp_calculator.sql` | DCP calculator as UC functions (generated from `dcp_estimator.py`) |
 | `sql/08_workload_sizing.sql` | Workload sizing tables and functions |
 | `sql/09_governed_prices.sql` | Governed price card and `get_dbu_price` |
-| `genie/space_definition.json` | The agent definition: tables, functions, instructions, examples, samples, benchmarks |
-| `calculator/` | Builders (`build_sql.py`, `build_notebook.py`, `build_setup.py`), the calculator adapter and rate registry seed |
+| `genie/space_definition.json`, `genie/instructions.md` | Agent configuration and concise routing policy |
+| `genie/catalog/estimator_catalog.json` | Maintained product/category coverage, routing cues, pricing basis, and validation status |
+| `sql/10_product_catalog.sql` | Generated `estimator_catalog()` function used during category discovery |
+| `calculator/` | Builders (`build_all.py`, `build_sql.py`, `build_catalog.py`, `build_notebook.py`, `build_setup.py`), Python bundle manifest/loader, adapter and rate seed |
 | `samples/requests/` | Bundled use cases (`SEND_US01`, `AI_RAG_MODEL_API`, `FIN_CLAIMS_02`) |
 | `benchmark/` | 20-question benchmark harness and workbook filler |
 | `pricing_data/` | Lakemeter OSS pricing CSVs (loaded by setup step 1) |
@@ -267,18 +283,23 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
   as overrides (`{"_areas.storage": "UNKNOWN"}`). Results report `area_states`; named use cases' missing areas are
   `NOT_APPLICABLE`.
 - **Identifiers and scenarios**: a submitted `use_case_id`, `component_id` and `scenarios` list are kept as given.
-- **Upgrading the calculator**: replace `notebooks/dcp_estimator.py`, run the three builders
-  (`build_sql.py`, `build_notebook.py`, `build_setup.py`), run the `setup_agent` job (or the setup notebook), then the benchmark.
+- **Updating the calculator**: edit `notebooks/dcp_estimator.py`; if adding a helper module, add its unique flat import
+  name and repository-relative path to `calculator/bundle_manifest.json`. List dependencies before modules that import them.
+  Unlisted files are not shipped to the UC runtime. The builder validates source paths/syntax/delimiters and hashes every
+  module name and source into the worker cache key. Run local contract tests and `python3 calculator/build_all.py`, review
+  the generated SQL/notebook diff, then run the `setup_agent` job after deployment approval. Never edit generated SQL by hand.
+- **Updating coverage or routing**: edit `genie/catalog/estimator_catalog.json` or `genie/instructions.md`, run
+  `python3 calculator/build_all.py`, review the generated definition, then validate the targeted Genie flows.
 
 ### Benchmark
 
-`benchmark/run_benchmark.py` asks the agent the 20 benchmark questions (DCP workbook tab C) as written, compares
-each answer with the deployed calculator's output (agent pass = calculator called, figures reproduced to the cent,
-PENDING shown as PENDING), and separately checks the calculator engine at governed rates against the workbook's
-expected answers. `benchmark/fill_workbook.py` writes the results into a copy of the workbook. Ad-hoc questions do not
-say whether the other areas apply, so the agent's first reply must ask for the area states without figures; the
-follow-up "The other calculator areas are not applicable." is then graded. Q18 (no runs per month) and Q20 (-1 GB) pass
-when the agent asks for the input and shows no figures.
+`benchmark/run_benchmark.py` retains the 20 numeric regression questions and adds routing/coverage acceptance cases
+(Q21-Q27) for input-format parity, identifiers/scenarios, missing-input follow-up, DCP-first routing, catalog discovery,
+unsupported coverage, and six-area guided intake. The numeric cases compare Genie with the deployed calculator and also
+check the local engine against workbook v4.0.2 expectations. `benchmark/coverage_map.json` maps the V2 workbook's Green,
+Yellow and Gray items to test targets; it does not imply unrun tests passed. Live cases require a selected Databricks
+profile, warehouse and Genie Agent. The 51-case baseline and NEW_WORKLOAD_01 workbook fixtures are not in this repository,
+so those exact historical cases remain unreproducible until their source inputs are added.
 
 ## Notes / gotchas
 

@@ -1,9 +1,9 @@
 """Generate setup_genie_dcp_agent.py - ONE notebook that builds the whole Genie Cost Estimator Agent in a workspace.
 
-Embeds: the Lakemeter functions (sql/02_functions.sql), sizing (sql/08), governed prices (sql/09), the DCP calculator SQL (sql/06, which embeds
-notebooks/dcp_estimator.py verbatim), the calculator rate registry, the named use cases (samples/requests) and the
-validated Genie agent definition (genie/space_definition.json). The only external input is the pricing CSV folder.
-Run calculator/build_sql.py first. Re-run all builders after any change.
+Embeds: Lakemeter functions (sql/02), sizing (sql/08), the product catalog (sql/10), governed prices (sql/09), DCP
+calculator SQL (sql/06, embedding every module in calculator/bundle_manifest.json), its rate registry, named use cases,
+and the agent definition with instructions from genie/instructions.md. The only external input is the pricing CSV folder.
+Run calculator/build_all.py after changing calculator sources, catalog data, or agent context.
 """
 import json, os, re
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -12,8 +12,10 @@ FUNCTIONS_SQL = "\n".join(l for l in rd("sql", "02_functions.sql").split("\n") i
 CALC_SQL = rd("sql", "06_dcp_calculator.sql").strip()
 GOV_SQL = "\n".join(l for l in rd("sql", "09_governed_prices.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
 SIZING_SQL = "\n".join(l for l in rd("sql", "08_workload_sizing.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
+CATALOG_SQL = rd("sql", "10_product_catalog.sql").strip()
 SEED = json.loads(rd("calculator", "rate_registry_seed.json"))
 SPACE = json.loads(rd("genie", "space_definition.json"))
+SPACE["text_instructions"] = [rd("genie", "instructions.md").strip()]
 REQS = {f[:-5]: json.loads(rd("samples", "requests", f)) for f in sorted(os.listdir(os.path.join(ROOT, "samples", "requests"))) if f.endswith(".json")}
 V = SEED["calculator_version"]
 lit = lambda obj: f"json.loads({json.dumps(json.dumps(obj, indent=1))})"
@@ -26,7 +28,7 @@ nb = f'''# Databricks notebook source
 # MAGIC | Step | Creates |
 # MAGIC |---|---|
 # MAGIC | 1 | Schema, and the 10 Lakemeter pricing reference tables from the pricing CSV folder |
-# MAGIC | 2 | 29 list-price functions (`estimate_*`, rate lookups), and workload sizing (`size_cluster`, `estimate_sized_workload`, `ref_sizing_*`) |
+# MAGIC | 2 | 29 Lakemeter functions, workload sizing, and the queryable `estimator_catalog()` product coverage function |
 # MAGIC | 3 | The **DCP Smart Estimation Calculator v{V}** as Unity Catalog functions (`dcp_calc`, `dcp_calc_totals`, `dcp_calc_line_items`, `dcp_calc_details`, `dcp_request`) |
 # MAGIC | 4 | Rates: `ref_dbu_price_card` (every Lakemeter and sizing DBU price) and `dcp_rate_card` (DCP calculator), both from `system.billing.account_prices` (governed) or `list_prices`; no price = PENDING |
 # MAGIC | 5 | `dcp_requests`: named use cases (bundled presets, plus any request JSON files in `requests_path`) |
@@ -127,6 +129,19 @@ if spark.catalog.tableExists(f"{{FQ}}.ref_sizing_profiles") and "gb_per_core_hou
 for s in [s.strip() for s in SIZING_SQL.split("\\n-- @@\\n") if s.strip()]:
     spark.sql(s.replace("__FQ__", FQ))
 print("Workload sizing created: ref_sizing_profiles, ref_sizing_node_families, size_cluster, estimate_sized_workload")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2b. Product coverage catalog
+# MAGIC This queryable catalog helps Genie discover supported and unavailable categories; it is not a pricing source.
+
+# COMMAND ----------
+
+CATALOG_SQL = {json.dumps(CATALOG_SQL)}
+for s in [s.strip() for s in CATALOG_SQL.split("\\n-- @@\\n") if s.strip()]:
+    spark.sql(s.replace("__FQ__", FQ))
+print("Product coverage catalog created")
 
 # COMMAND ----------
 

@@ -1,0 +1,561 @@
+{
+  "as_of": "2026-10-29",
+  "categories": [
+    {
+      "id": "COMPUTE",
+      "label": "Compute and cluster sizing",
+      "sort_order": 10
+    },
+    {
+      "id": "SQL",
+      "label": "SQL and analytics",
+      "sort_order": 20
+    },
+    {
+      "id": "CLOUD_DATA",
+      "label": "Cloud data transfer and storage",
+      "sort_order": 30
+    },
+    {
+      "id": "AI_SERVING",
+      "label": "AI, models, and serving",
+      "sort_order": 40
+    },
+    {
+      "id": "PLATFORM",
+      "label": "Databricks platform services",
+      "sort_order": 50
+    },
+    {
+      "id": "UNAVAILABLE",
+      "label": "Not currently covered",
+      "sort_order": 90
+    }
+  ],
+  "products": [
+    {
+      "category_id": "COMPUTE",
+      "id": "DCP_PROCESSING",
+      "label": "Workload processing estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "DCP workload cost by workload type, run time/frequency, or a named DCP use case; accept prose or request JSON.",
+      "required_facts": "Workload type and the applicable runtime/run details; calculator defaults are disclosed; workload volume is not a DCP processing input.",
+      "pricing_basis": "DCP rate card; Databricks account prices where present, otherwise explicit REFERENCE_ONLY/PENDING statuses; AWS registry rates by status. No rate substitution.",
+      "region_scope": "DCP registry currently covers US_EAST_1.",
+      "status_note": "Includes CONTINUOUS_STREAMING, EVENT_DRIVEN_BATCH, SCHEDULED_BATCH, ML_TRAINING and BATCH_SCORING. Some compute choices, including GPU jobs and serverless pipelines, can remain PENDING.",
+      "evidence_ref": "Workbook A2-A8, B9-B11, C; Oct 28 Genie benchmark. Partial: selected workloads only; Q13 first-turn area gate failed in the latest full run."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "JOBS_CLASSIC",
+      "label": "Classic Jobs cluster cost (configured cluster)",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_jobs_classic_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly supplies or asks about a configured classic Jobs cluster.",
+      "required_facts": "Cloud, region, tier, driver/worker node types, worker count, Photon choice, run frequency and runtime.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING) plus cloud VM on-demand list price.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; this repository has no product-specific agent benchmark for this path.",
+      "evidence_ref": "sql/02_functions.sql; README.md Notes; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "ALL_PURPOSE_CLASSIC",
+      "label": "Classic all-purpose cluster cost (configured cluster)",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_all_purpose_classic_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly supplies or asks about a configured classic all-purpose cluster.",
+      "required_facts": "Cloud, region, tier, driver/worker node types, worker count, Photon choice, run frequency and runtime.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING) plus cloud VM on-demand list price.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; README.md Notes; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "DLT_CLASSIC",
+      "label": "Classic Lakeflow Declarative Pipelines cluster cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_dlt_classic_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks about a configured classic pipeline and gives its edition and cluster details.",
+      "required_facts": "Cloud, region, tier, pipeline edition, driver/worker types, worker count, Photon choice, run frequency and runtime.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING) plus cloud VM on-demand list price.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "SERVERLESS_COMPUTE",
+      "label": "Serverless Jobs or all-purpose compute cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_serverless_compute_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for serverless compute cost with a workload configuration.",
+      "required_facts": "Cloud, region, tier, Jobs/all-purpose workload type, node configuration, serverless mode, runs and runtime.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING); VM cost is zero when bundled by the function.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "SIZED_WORKLOAD",
+      "label": "Recommend a job cluster, then estimate its cost",
+      "engine": "SIZING",
+      "entrypoints": [
+        "size_cluster",
+        "estimate_sized_workload"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "Only when the user explicitly asks to size/recommend a cluster or asks what cluster is needed.",
+      "required_facts": "Workload type, data GB, frequency, optional completion window, cloud/region and node constraints.",
+      "pricing_basis": "AWS Jobs classic/serverless costing; governed DBU price status plus on-demand VM list price. Throughput profiles are ASSUMED until calibrated.",
+      "region_scope": "AWS node families; price regions depend on configured price_regions.",
+      "status_note": "Covers INGESTION, ETL, STREAMING, ML_TRAINING and ML_INFERENCE. Does not automatically replace DCP when DCP facts are missing; sizing profiles are uncalibrated by default.",
+      "evidence_ref": "sql/08_workload_sizing.sql; notebooks/11_calibrate_sizing.py; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "SQL",
+      "id": "DCP_SQL_REPORTING",
+      "label": "DCP SQL reporting workload estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "DCP SQL/reporting cost described by concurrent users and working days, not a configured warehouse size.",
+      "required_facts": "Concurrent users and working days; confirm other DCP areas.",
+      "pricing_basis": "DCP SQL Pro rate card with explicit rate status and source.",
+      "region_scope": "DCP registry currently covers US_EAST_1.",
+      "status_note": "A benchmark question covers SQL reporting; broader parity is not established.",
+      "evidence_ref": "Workbook B9; benchmark Q11; latest full run 2026-10-28."
+    },
+    {
+      "category_id": "SQL",
+      "id": "DBSQL_WAREHOUSE",
+      "label": "Configured DBSQL warehouse cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_dbsql_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly supplies a warehouse type/size or asks about a configured warehouse.",
+      "required_facts": "Cloud, region, tier, warehouse type and size, cluster count, hours or runs/runtime/days.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING); VM cost depends on function configuration.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; README.md Notes; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "CLOUD_DATA",
+      "id": "DCP_DATASYNC",
+      "label": "AWS DataSync transfer and migration estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "DataSync daily transfer or a one-time migration in a DCP estimate.",
+      "required_facts": "Daily GB range, transfer days, and any initial migration GB; confirm other DCP areas.",
+      "pricing_basis": "DCP AWS rate registry; rate status/source are returned on line items.",
+      "region_scope": "AWS US_EAST_1 registry.",
+      "status_note": "The calculator can price this area; the latest full Genie benchmark had a first-turn area-confirmation failure for Q13.",
+      "evidence_ref": "Workbook A8 and C13; benchmark Q13; latest full run 2026-10-28."
+    },
+    {
+      "category_id": "CLOUD_DATA",
+      "id": "DCP_S3_KMS",
+      "label": "AWS S3 storage, requests, and KMS estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "S3 retained storage, file/request volume, or KMS usage in a DCP estimate.",
+      "required_facts": "Retained TB, files/day, reads and write requests/file, encrypted files/day, KMS keys/requests, storage days; use calculator defaults explicitly.",
+      "pricing_basis": "DCP AWS rate registry: some observed request/KMS rows and a REFERENCE_ONLY S3 storage row; report each line's status/source.",
+      "region_scope": "AWS US_EAST_1 registry.",
+      "status_note": "Do not describe all AWS rates as governed account prices.",
+      "evidence_ref": "Workbook A6, A7, C21; benchmark Q15 and Q20; latest full run 2026-10-28."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "DCP_MODEL_ENDPOINTS",
+      "label": "Recurring DCP pay-per-token model API estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "Recurring model API calls billed per token in a DCP estimate.",
+      "required_facts": "Model, calls/day, input/output tokens per call; confirm other DCP areas.",
+      "pricing_basis": "DCP model-conversion registry plus the runtime DCP rate-card status. The conversion figures are sourced from public pricing; the associated DBU rate is GOVERNED only when an exact current account price is found, otherwise REFERENCE_ONLY or PENDING.",
+      "region_scope": "DCP registry currently covers US_EAST_1.",
+      "status_note": "The conversion records are labeled GOVERNED while their seed rate is REFERENCE_ONLY; setup may replace the rate status from account_prices. Report the runtime line-item status/source and do not infer governance from the conversion label alone.",
+      "evidence_ref": "Workbook A3 and C; benchmark Q16-Q17; latest full run 2026-10-28."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "DCP_ONE_TIME_MODEL_JOBS",
+      "label": "One-time DCP model job estimate",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals",
+        "dcp_calc_line_items",
+        "dcp_calc_details"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "PARTIAL",
+      "use_when": "One-time token workload such as initial model indexing in a DCP estimate.",
+      "required_facts": "Model, total input/output token ranges, and optional API call count; confirm other DCP areas.",
+      "pricing_basis": "DCP model-conversion registry plus the runtime DCP rate-card status. The conversion figures are sourced from public pricing; the associated DBU rate is GOVERNED only when an exact current account price is found, otherwise REFERENCE_ONLY or PENDING.",
+      "region_scope": "DCP registry currently covers US_EAST_1.",
+      "status_note": "The conversion records are labeled GOVERNED while their seed rate is REFERENCE_ONLY; setup may replace the rate status from account_prices. Report the runtime line-item status/source and do not infer governance from the conversion label alone.",
+      "evidence_ref": "Workbook A3 and B11; calculator one-time model job area; latest full run 2026-10-28."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "MODEL_SERVING",
+      "label": "Databricks Model Serving endpoint cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_model_serving_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for a configured Model Serving endpoint estimate.",
+      "required_facts": "Cloud, region, tier, serving size, concurrency and days.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING); always-on time uses function output.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "VECTOR_SEARCH",
+      "label": "Vector Search endpoint cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_vector_search_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for a configured Vector Search endpoint estimate.",
+      "required_facts": "Cloud, region, tier, endpoint mode, vector capacity and days.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING); always-on time uses function output.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "FMAPI_DATABRICKS",
+      "label": "Databricks Foundation Model API configured cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_fmapi_databricks_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for a Databricks Foundation Model API product estimate by model and token/rate type.",
+      "required_facts": "Cloud, region, tier, model, rate type and token/usage quantity.",
+      "pricing_basis": "Lakemeter model/API pricing reference data; verify function status and source in output.",
+      "region_scope": "Regions depend on configured reference data.",
+      "status_note": "Do not confuse a configured product estimate with a DCP workload estimate.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "FMAPI_PROPRIETARY",
+      "label": "Proprietary Foundation Model API configured cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_fmapi_proprietary_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for an Anthropic, OpenAI, or Google model API product estimate.",
+      "required_facts": "Cloud, region, tier, provider/model, endpoint type, context length, rate type and quantity.",
+      "pricing_basis": "Lakemeter proprietary model/API pricing reference data; verify function output source/status.",
+      "region_scope": "Regions depend on configured reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "AI_PARSE",
+      "label": "AI Parse document processing cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_ai_parse_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for an AI Parse usage estimate.",
+      "required_facts": "Cloud, region, tier, pages/DBU mode, volume, complexity and any applicable runtime.",
+      "pricing_basis": "Lakemeter DBU and product reference rates; returned DBU price status applies.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "AI_CLASSIFY",
+      "label": "AI Classify document processing cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_ai_classify_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for an AI Classify usage estimate.",
+      "required_facts": "Cloud, region, tier, document type, document count and any custom rate.",
+      "pricing_basis": "Lakemeter DBU and product reference rates; returned DBU price status applies.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "AI_SERVING",
+      "id": "AI_EXTRACT",
+      "label": "AI Extract document processing cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_ai_extract_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for an AI Extract usage estimate.",
+      "required_facts": "Cloud, region, tier, document type, input count and any custom rate.",
+      "pricing_basis": "Lakemeter DBU and product reference rates; returned DBU price status applies.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "PLATFORM",
+      "id": "LAKEBASE",
+      "label": "Lakebase capacity cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_lakebase_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for a configured Lakebase capacity estimate.",
+      "required_facts": "Cloud, region, tier, capacity units, HA nodes and days.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING); always-on hours are calculated by the function.",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "PLATFORM",
+      "id": "DATABRICKS_APPS",
+      "label": "Databricks Apps cost",
+      "engine": "LAKEMETER_FUNCTION",
+      "entrypoints": [
+        "estimate_databricks_apps_cost"
+      ],
+      "implementation_state": "AVAILABLE",
+      "validation_state": "UNTESTED",
+      "use_when": "The user explicitly asks for a configured Databricks Apps estimate.",
+      "required_facts": "Cloud, region, tier, app size, app count and hours.",
+      "pricing_basis": "Lakemeter DBU price card (GOVERNED/REFERENCE_ONLY/PENDING).",
+      "region_scope": "Regions depend on configured price_regions and loaded reference data.",
+      "status_note": "Function exists; no product-specific agent benchmark is present in this repository.",
+      "evidence_ref": "sql/02_functions.sql; validation inventory through 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "AI_GATEWAY",
+      "label": "AI Gateway",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not estimate with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "AGENT_EVALUATION",
+      "label": "Agent Evaluation",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not estimate with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "AI_RUNTIME_TRAINING",
+      "label": "AI Runtime model training",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not confuse this product with DCP ML_TRAINING workload processing or Lakemeter job cluster sizing.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled as the AI Runtime product.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "GENERAL_STORAGE",
+      "label": "General Databricks storage",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "DCP S3 storage/KMS does not imply Databricks general storage coverage.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "ZEROBUS",
+      "label": "Zerobus Ingest",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not estimate with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "SHUTTERSTOCK_IMAGEAI",
+      "label": "Shutterstock ImageAI",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not estimate with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "LAKEFLOW_CONNECT",
+      "label": "Lakeflow Connect",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not estimate with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "UNAVAILABLE",
+      "id": "SKU_DISCOUNTS",
+      "label": "SKU-specific discount handling",
+      "engine": "NONE",
+      "entrypoints": [],
+      "implementation_state": "NOT_PORTED",
+      "validation_state": "NONE",
+      "use_when": "Do not apply discounts or infer SKU discounts with the current project.",
+      "required_facts": "None; explain the coverage gap.",
+      "pricing_basis": "Not modeled.",
+      "region_scope": "Not applicable.",
+      "status_note": "Not yet ported; leave unpriced.",
+      "evidence_ref": "README.md Notes; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "DCP_GPU_COMPUTE",
+      "label": "GPU job compute in the DCP calculator",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals"
+      ],
+      "implementation_state": "PENDING",
+      "validation_state": "UNTESTED",
+      "use_when": "DCP compute request requires GPU pricing.",
+      "required_facts": "GPU node and rate mapping must be approved and loaded.",
+      "pricing_basis": "No DCP GPU rate; return PENDING.",
+      "region_scope": "Not available in the DCP registry.",
+      "status_note": "Capability decision can be represented, but no GPU rate is available; do not price or substitute.",
+      "evidence_ref": "calculator/rate_registry_seed.json; reviewed 2026-10-29."
+    },
+    {
+      "category_id": "COMPUTE",
+      "id": "DCP_SERVERLESS_PIPELINE",
+      "label": "Serverless pipeline compute in the DCP calculator",
+      "engine": "DCP_CALCULATOR",
+      "entrypoints": [
+        "dcp_calc_totals"
+      ],
+      "implementation_state": "PENDING",
+      "validation_state": "UNTESTED",
+      "use_when": "DCP streaming workload requires serverless pipeline compute.",
+      "required_facts": "A supported pipeline rate and validated classification are required.",
+      "pricing_basis": "No DCP pipeline rate; return PENDING.",
+      "region_scope": "Not available in the DCP registry.",
+      "status_note": "Do not substitute Jobs serverless pricing for pipeline compute.",
+      "evidence_ref": "calculator/rate_registry_seed.json; reviewed 2026-10-29."
+    }
+  ]
+}
