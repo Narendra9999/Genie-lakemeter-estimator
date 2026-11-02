@@ -1,75 +1,41 @@
-# Declarative Automation Bundle for the Genie Cost Estimator Agent.
-# Deploys three jobs that run the notebooks in this repo:
-#   setup_agent        setup_genie_dcp_agent.py   build or update the whole agent (run on install and after changes)
-#   rate_refresh       09_load_rate_card.py       reload both rate cards from system.billing (daily)
-#   sizing_calibration 11_calibrate_sizing.py     measure sizing throughput from job history (monthly)
-#   grant_access       12_grant_access.py         give the agent user groups access (also runs after setup_agent)
-# Usage: fill in dab-config.yml (from dab-config.example.yml), then see "Deploy with a bundle" in README.md.
 bundle:
-  name: genie-cost-estimator
+  name: dcp-cost-estimator
 
 include:
   - resources/*.yml
-  # Per-environment values (workspace, catalog, warehouse, service principal...). Copy dab-config.example.yml to
-  # dab-config.yml and fill it in; dab-config.yml is git-ignored. --var on the command line still overrides it.
-  - dab-config.y?l
 
 variables:
   catalog:
-    description: Catalog that holds the agent schema (required)
+    description: Catalog for DCP calculator objects
   schema:
-    description: Agent schema (created if missing)
-    default: lakemeter
+    description: DCP schema
+    default: dcp_estimator
   warehouse_id:
-    description: Pro or Serverless SQL warehouse the agent runs on (required)
+    description: Genie-compatible SQL warehouse ID
   rate_source:
-    description: ACCOUNT_PRICES (governed, production) or LIST_PRICES (workspaces without account prices)
+    description: ACCOUNT_PRICES or LIST_PRICES
     default: ACCOUNT_PRICES
-  price_regions:
-    description: Regions to load into the Lakemeter price card (comma list, or ALL)
-    default: us-east-1
   sku_region:
-    description: Billing SKU region suffix for the DCP calculator's US_EAST_1
+    description: Billing SKU suffix for US_EAST_1
     default: US_EAST_N_VIRGINIA
   space_id:
-    description: Genie agent id to update; blank = the agent with space_title, created if none
+    description: Existing agent ID to update; blank creates a new agent
     default: ""
   space_title:
-    description: Genie agent title
-    default: Lakemeter Cost Estimator
-  user_groups:
-    description: Agent user groups, comma-separated. Each gets CAN RUN on the agent, USE CATALOG, and USE SCHEMA + SELECT + EXECUTE on the agent schema (blank = no grants)
-    default: ""
-  revoke_others:
-    description: "true = groups not in user_groups lose their USE SCHEMA / SELECT / EXECUTE grants on the agent schema"
-    default: "false"
-  requests_path:
-    description: Optional workspace folder of extra use-case request JSON files
-    default: ""
-  load_pricing_tables:
-    description: Reload the Lakemeter pricing tables on setup (false = faster re-runs)
-    default: "true"
-  calibration_mode:
-    description: DRY_RUN (report only) or APPLY (update ref_sizing_profiles)
-    default: DRY_RUN
-  policy_id:
-    description: Optional job cluster policy id; calibration loads its worker limit into ref_sizing_policy
-    default: ""
+    description: DCP agent title
+    default: DCP Cost Estimator
   schedule_pause_status:
-    description: UNPAUSED or PAUSED for the rate-refresh and calibration schedules
-    default: UNPAUSED
+    description: PAUSED or UNPAUSED for daily DCP rate refresh
+    default: PAUSED
   run_as_service_principal:
-    description: Application id of the service principal the prod jobs run as
+    description: Service principal application ID for production jobs
     default: ""
 
 targets:
   dev:
-    # Jobs are prefixed with "[dev <user>]" and schedules are paused.
     mode: development
     default: true
-
   prod:
-    # Deploy as (or for) a service principal, e.g. from CI. Files go to the deployer's own folder, not /Workspace/Shared.
     mode: production
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

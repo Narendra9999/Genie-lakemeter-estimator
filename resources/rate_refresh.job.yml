@@ -1,8 +1,8 @@
 resources:
   jobs:
     rate_refresh:
-      name: genie-cost-estimator-rate-refresh
-      description: Reload dcp_rate_card and ref_dbu_price_card from system.billing (account_prices or list_prices). A SKU without exactly one current price is PENDING.
+      name: dcp-estimator-rate-refresh
+      description: Refresh DCP DBU rates from system billing; missing or ambiguous prices remain PENDING.
       max_concurrent_runs: 1
       timeout_seconds: 3600
       schedule:
@@ -18,4 +18,3 @@ resources:
               schema: ${var.schema}
               rate_source: ${var.rate_source}
               sku_region: ${var.sku_region}
-              price_regions: ${var.price_regions}
