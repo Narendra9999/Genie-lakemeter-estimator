@@ -1,0 +1,339 @@
+[
+  {
+    "capability_id": "DCP_SCHEDULED_BATCH",
+    "category": "SCHEDULED_BATCH",
+    "workload_description": "Scheduled batch processing",
+    "engine": "Processing Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_PROCESSING"
+    ],
+    "sort_order": 1
+  },
+  {
+    "capability_id": "DCP_EVENT_DRIVEN_BATCH",
+    "category": "EVENT_DRIVEN_BATCH",
+    "workload_description": "Event-driven batch processing",
+    "engine": "Processing Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_PROCESSING"
+    ],
+    "sort_order": 2
+  },
+  {
+    "capability_id": "DCP_CONTINUOUS_STREAMING",
+    "category": "CONTINUOUS_STREAMING",
+    "workload_description": "Continuous streaming",
+    "engine": "Processing Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_PROCESSING"
+    ],
+    "sort_order": 3
+  },
+  {
+    "capability_id": "DCP_ML_TRAINING",
+    "category": "ML_TRAINING",
+    "workload_description": "Model training",
+    "engine": "Processing Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_PROCESSING"
+    ],
+    "sort_order": 4
+  },
+  {
+    "capability_id": "DCP_BATCH_SCORING",
+    "category": "BATCH_SCORING",
+    "workload_description": "Batch model scoring",
+    "engine": "Processing Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_PROCESSING"
+    ],
+    "sort_order": 5
+  },
+  {
+    "capability_id": "DCP_SQL_REPORTING",
+    "category": "SQL_REPORTING",
+    "workload_description": "SQL reporting workload",
+    "engine": "SQL Reporting Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_SQL_REPORTING"
+    ],
+    "sort_order": 6
+  },
+  {
+    "capability_id": "DCP_TRANSFER_COSTS",
+    "category": "TRANSFER_COSTS",
+    "workload_description": "Recurring transfer and one-time migration",
+    "engine": "DataSync Transfer Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_DATASYNC"
+    ],
+    "sort_order": 7
+  },
+  {
+    "capability_id": "DCP_STORAGE_COSTS",
+    "category": "STORAGE_COSTS",
+    "workload_description": "S3 storage, requests and KMS",
+    "engine": "S3 and KMS Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_S3_KMS"
+    ],
+    "sort_order": 8
+  },
+  {
+    "capability_id": "DCP_MODEL_API_COSTS",
+    "category": "MODEL_API_COSTS",
+    "workload_description": "Recurring model API calls and one-time token jobs",
+    "engine": "Model API Engine",
+    "estimate_type": "DCP",
+    "capability_kind": "WORKLOAD_ESTIMATE",
+    "catalog_product_ids": [
+      "DCP_MODEL_ENDPOINTS",
+      "DCP_ONE_TIME_MODEL_JOBS"
+    ],
+    "sort_order": 9
+  },
+  {
+    "capability_id": "LAKEMETER_JOBS_CLASSIC",
+    "category": "JOBS_CLASSIC",
+    "workload_description": "Configured job clusters: ingestion, ETL, batch, training and scoring",
+    "engine": "estimate_jobs_classic_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "JOBS_CLASSIC"
+    ],
+    "sort_order": 10
+  },
+  {
+    "capability_id": "LAKEMETER_ALL_PURPOSE_CLASSIC",
+    "category": "ALL_PURPOSE_CLASSIC",
+    "workload_description": "Interactive notebooks, exploration and development",
+    "engine": "estimate_all_purpose_classic_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "ALL_PURPOSE_CLASSIC"
+    ],
+    "sort_order": 11
+  },
+  {
+    "capability_id": "LAKEMETER_DLT_CLASSIC",
+    "category": "DLT_CLASSIC",
+    "workload_description": "Configured classic Lakeflow batch and streaming pipelines",
+    "engine": "estimate_dlt_classic_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "DLT_CLASSIC"
+    ],
+    "sort_order": 12
+  },
+  {
+    "capability_id": "LAKEMETER_SERVERLESS_COMPUTE",
+    "category": "SERVERLESS_COMPUTE",
+    "workload_description": "Jobs or all-purpose serverless compute consumption model",
+    "engine": "estimate_serverless_compute_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "SERVERLESS_COMPUTE"
+    ],
+    "sort_order": 13
+  },
+  {
+    "capability_id": "LAKEMETER_DBSQL_WAREHOUSE",
+    "category": "DBSQL_WAREHOUSE",
+    "workload_description": "Configured classic, Pro or Serverless SQL warehouses",
+    "engine": "estimate_dbsql_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "DBSQL_WAREHOUSE"
+    ],
+    "sort_order": 14
+  },
+  {
+    "capability_id": "LAKEMETER_MODEL_SERVING",
+    "category": "MODEL_SERVING",
+    "workload_description": "Configured CPU/GPU online inference endpoints",
+    "engine": "estimate_model_serving_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "MODEL_SERVING"
+    ],
+    "sort_order": 15
+  },
+  {
+    "capability_id": "LAKEMETER_VECTOR_SEARCH",
+    "category": "VECTOR_SEARCH",
+    "workload_description": "Standard or storage-optimized vector endpoints",
+    "engine": "estimate_vector_search_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "VECTOR_SEARCH"
+    ],
+    "sort_order": 16
+  },
+  {
+    "capability_id": "LAKEMETER_FMAPI_DATABRICKS",
+    "category": "FMAPI_DATABRICKS",
+    "workload_description": "Supported Databricks-hosted model API usage",
+    "engine": "estimate_fmapi_databricks_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "FMAPI_DATABRICKS"
+    ],
+    "sort_order": 17
+  },
+  {
+    "capability_id": "LAKEMETER_FMAPI_PROPRIETARY",
+    "category": "FMAPI_PROPRIETARY",
+    "workload_description": "Supported proprietary model API usage",
+    "engine": "estimate_fmapi_proprietary_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "FMAPI_PROPRIETARY"
+    ],
+    "sort_order": 18
+  },
+  {
+    "capability_id": "LAKEMETER_AI_PARSE",
+    "category": "AI_PARSE",
+    "workload_description": "Document parsing",
+    "engine": "estimate_ai_parse_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "AI_PARSE"
+    ],
+    "sort_order": 19
+  },
+  {
+    "capability_id": "LAKEMETER_AI_CLASSIFY",
+    "category": "AI_CLASSIFY",
+    "workload_description": "Document/text classification",
+    "engine": "estimate_ai_classify_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "AI_CLASSIFY"
+    ],
+    "sort_order": 20
+  },
+  {
+    "capability_id": "LAKEMETER_AI_EXTRACT",
+    "category": "AI_EXTRACT",
+    "workload_description": "Information extraction",
+    "engine": "estimate_ai_extract_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "AI_EXTRACT"
+    ],
+    "sort_order": 21
+  },
+  {
+    "capability_id": "LAKEMETER_LAKEBASE",
+    "category": "LAKEBASE",
+    "workload_description": "Configured PostgreSQL capacity",
+    "engine": "estimate_lakebase_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "LAKEBASE"
+    ],
+    "sort_order": 22
+  },
+  {
+    "capability_id": "LAKEMETER_DATABRICKS_APPS",
+    "category": "DATABRICKS_APPS",
+    "workload_description": "Configured hosted applications",
+    "engine": "estimate_databricks_apps_cost",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "PRODUCT_ESTIMATE",
+    "catalog_product_ids": [
+      "DATABRICKS_APPS"
+    ],
+    "sort_order": 23
+  },
+  {
+    "capability_id": "LAKEMETER_SIZING_INGESTION",
+    "category": "INGESTION",
+    "workload_description": "Recommend a cluster and estimate eligible compute options for INGESTION",
+    "engine": "Workload sizing",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "WORKLOAD_SIZING",
+    "catalog_product_ids": [
+      "SIZED_WORKLOAD"
+    ],
+    "sort_order": 24
+  },
+  {
+    "capability_id": "LAKEMETER_SIZING_ETL",
+    "category": "ETL",
+    "workload_description": "Recommend a cluster and estimate eligible compute options for ETL",
+    "engine": "Workload sizing",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "WORKLOAD_SIZING",
+    "catalog_product_ids": [
+      "SIZED_WORKLOAD"
+    ],
+    "sort_order": 25
+  },
+  {
+    "capability_id": "LAKEMETER_SIZING_STREAMING",
+    "category": "STREAMING",
+    "workload_description": "Recommend a cluster and estimate eligible compute options for STREAMING",
+    "engine": "Workload sizing",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "WORKLOAD_SIZING",
+    "catalog_product_ids": [
+      "SIZED_WORKLOAD"
+    ],
+    "sort_order": 26
+  },
+  {
+    "capability_id": "LAKEMETER_SIZING_ML_TRAINING",
+    "category": "ML_TRAINING",
+    "workload_description": "Recommend a cluster and estimate eligible compute options for ML_TRAINING",
+    "engine": "Workload sizing",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "WORKLOAD_SIZING",
+    "catalog_product_ids": [
+      "SIZED_WORKLOAD"
+    ],
+    "sort_order": 27
+  },
+  {
+    "capability_id": "LAKEMETER_SIZING_ML_INFERENCE",
+    "category": "ML_INFERENCE",
+    "workload_description": "Recommend a cluster and estimate eligible compute options for ML_INFERENCE",
+    "engine": "Workload sizing",
+    "estimate_type": "Lakemeter",
+    "capability_kind": "WORKLOAD_SIZING",
+    "catalog_product_ids": [
+      "SIZED_WORKLOAD"
+    ],
+    "sort_order": 28
+  }
+]

@@ -1,0 +1,58 @@
+{
+  "attachments": [
+    {
+      "attachment_id": "01f1d6f00fc71c9c977e0f81ef165663",
+      "query": {
+        "description": "You want to see the required and conditional input parameters needed for cost estimation across different DCP engines and request areas.",
+        "query": "SELECT `request_area`, `engine`, `parameter_name`, `requirement`, `unit`, `applies_when`, `question`, `example_value_json`, `default_value_json` FROM `fevm_catalog_naren`.`lakemeter_onebook`.`dcp_engine_input_requirements` WHERE `requirement` IS NOT NULL AND upper(`requirement`) IN ('REQUIRED','CONDITIONAL') ORDER BY `request_area`, `engine`, `sort_order`",
+        "query_result_metadata": {
+          "row_count": 9
+        },
+        "statement_id": "01f1d6f0-0fd3-11af-b6e7-d39468cb3d77",
+        "thoughts": [
+          {
+            "content": "You want to see the required and conditional input parameters needed for cost estimation across different DCP engines and request areas.",
+            "thought_type": "THOUGHT_TYPE_DESCRIPTION"
+          },
+          {
+            "content": "- fevm_catalog_naren.lakemeter_onebook.dcp_engine_input_requirements",
+            "thought_type": "THOUGHT_TYPE_DATA_SOURCING"
+          },
+          {
+            "content": "- Retrieve input parameters that are marked as required or conditional for cost estimation.\n- Include details such as request area, engine, parameter name, requirement type, unit, conditions for applicability, question prompts, example values, and default values.\n- Order the results by request area, engine, and sort order to organize the inputs logically.",
+            "thought_type": "THOUGHT_TYPE_STEPS"
+          }
+        ]
+      }
+    },
+    {
+      "attachment_id": "01f1d6f010b01857916da943c8e1da07",
+      "suggested_questions": {
+        "questions": [
+          "Which DCP engine(s) do you want to include in the cost estimate? (Processing, SQL, Transfer, Storage, Model Endpoints, One-time Model Jobs)",
+          "Can you provide details about the workload type and expected usage, such as runtime hours, runs per month, or data volume?",
+          "Do you have any existing presets or named use cases you want to base the estimate on?"
+        ]
+      }
+    },
+    {
+      "text": {
+        "content": "To prepare a cost estimate, I first need to know which of the **five engines** apply to your workload: **Processing**, **SQL Reporting**, **S3/KMS Storage**, **Model API recurring endpoints**, and **one-time model jobs**. Based on the available requirements, examples of required inputs include:\n- **Processing:** workload type; for some workload types, **runs per month**\n- **SQL Reporting:** **concurrent SQL users**\n- **Storage:** **TB retained**, **files written per day**, and **reads per file**\n- **Model API recurring endpoints:** **model** and **calls per day**\n- **One-time model jobs:** **model**\nAcross the 9 requirement rows shown, **Storage** has the most required inputs in this sample, while **Processing** is the only area here with a conditional question.",
+        "purpose": "TEXT_ATTACHMENT_PURPOSE_ANSWER"
+      }
+    }
+  ],
+  "content": "I need a cost estimate. What do you need from me?",
+  "conversation_id": "01f1d6f0067210c6bf775ea2143d3fbd",
+  "created_timestamp": 1793646181469,
+  "id": "01f1d6f0067f1648a3379d67d87ed473",
+  "last_updated_timestamp": 1793646206134,
+  "message_id": "01f1d6f0067f1648a3379d67d87ed473",
+  "query_result": {
+    "row_count": 9,
+    "statement_id": "01f1d6f0-0fd3-11af-b6e7-d39468cb3d77"
+  },
+  "space_id": "01f1d6efcecd1620b04cf487817675b7",
+  "status": "COMPLETED",
+  "user_id": 78943176438521
+}

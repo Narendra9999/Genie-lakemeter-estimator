@@ -92,26 +92,27 @@ stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_request(
   p_model STRING DEFAULT NULL, p_calls_per_day DOUBLE DEFAULT NULL,
   p_input_tokens_low DOUBLE DEFAULT NULL, p_input_tokens_expected DOUBLE DEFAULT NULL, p_input_tokens_high DOUBLE DEFAULT NULL,
   p_output_tokens_low DOUBLE DEFAULT NULL, p_output_tokens_expected DOUBLE DEFAULT NULL, p_output_tokens_high DOUBLE DEFAULT NULL,
-  p_region STRING DEFAULT NULL, p_use_case_id STRING DEFAULT 'ADHOC', p_use_case_name STRING DEFAULT 'Ad-hoc estimate',
+  p_region STRING DEFAULT 'US_EAST_1', p_use_case_id STRING DEFAULT 'ADHOC', p_use_case_name STRING DEFAULT 'Ad-hoc estimate',
   p_scenarios STRING DEFAULT NULL, p_component_id STRING DEFAULT NULL, p_pattern STRING DEFAULT NULL,
   p_storage_days_per_month INT DEFAULT NULL, p_s3_write_requests_per_file DOUBLE DEFAULT NULL,
-  p_kms_requests_per_encrypted_file DOUBLE DEFAULT NULL, p_serving_mode STRING DEFAULT NULL, p_model_days_per_month INT DEFAULT NULL,
+  p_kms_requests_per_encrypted_file DOUBLE DEFAULT NULL, p_serving_mode STRING DEFAULT 'PAY_PER_TOKEN', p_model_days_per_month INT DEFAULT 30,
   p_included_areas STRING DEFAULT NULL, p_excluded_areas STRING DEFAULT NULL, p_unknown_areas STRING DEFAULT NULL,
   p_not_applicable_areas STRING DEFAULT NULL,
   p_one_time_model STRING DEFAULT NULL, p_one_time_component_id STRING DEFAULT NULL, p_one_time_description STRING DEFAULT NULL,
   p_one_time_input_tokens_low DOUBLE DEFAULT NULL, p_one_time_input_tokens_high DOUBLE DEFAULT NULL,
   p_one_time_output_tokens_low DOUBLE DEFAULT NULL, p_one_time_output_tokens_high DOUBLE DEFAULT NULL,
   p_one_time_api_calls DOUBLE DEFAULT NULL, p_one_time_serving_mode STRING DEFAULT NULL,
-  p_sql_component_id STRING DEFAULT NULL, p_model_component_id STRING DEFAULT NULL)
+  p_sql_component_id STRING DEFAULT NULL, p_model_component_id STRING DEFAULT NULL,
+  p_request_assumptions_confirmed BOOLEAN DEFAULT NULL)
 RETURNS STRING
-COMMENT 'Build a DCP calculator request (EstimateRequest JSON) for an ad-hoc question with named arguments. Pass ONLY what the user stated - blanks stay PENDING, never zero. One stated runtime per run applies to every scenario. Supports processing, SQL, DataSync, S3/KMS, recurring model API calls, and one-time model jobs. Use p_component_id for processing, p_sql_component_id for SQL, p_model_component_id for recurring model calls, and p_one_time_component_id for one-time jobs; preserve supplied IDs. One-time token inputs use p_one_time_model, p_one_time_input_tokens_low/high and p_one_time_output_tokens_low/high. p_scenarios defaults to LOW,EXPECTED,HIGH; add STRESS only when requested. Confirm all six areas through INCLUDED, EXCLUDED, UNKNOWN or NOT_APPLICABLE parameters. Use as: SELECT * FROM dcp_calc_totals(p_request => dcp_request(p_workload_type => ''SCHEDULED_BATCH'', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => ''sql,transfer,storage,model_endpoints,one_time_model_jobs''))'
+COMMENT 'Build a DCP EstimateRequest using only these named arguments; never invent aliases. Processing: p_workload_type, p_runtime_hours_low/expected/high, p_runs_per_month, p_component_id. SQL: p_concurrent_users, p_total_users, p_working_days_per_month, p_sql_component_id. Transfer: p_daily_gb_low/expected/high, p_transfer_days_per_month, p_initial_transfer_gb. Storage: p_retained_tb, p_files_per_day, p_s3_read_requests_per_file, optional S3/KMS fields. Recurring model: p_model, p_calls_per_day, p_input_tokens_low/expected/high, p_output_tokens_low/expected/high, p_model_component_id. One-time job: p_one_time_model, p_one_time_input_tokens_low/high, p_one_time_output_tokens_low/high, p_one_time_api_calls, p_one_time_component_id. Missing required inputs are returned by dcp_calc_* validation; never fill them. Defaults: US_EAST_1, 22 SQL/transfer days, 30 storage/model days, 1 S3 write request/file, 1 KMS request/encrypted file. Daily frequency is not a runs/month value; only EVENT_DRIVEN_BATCH has a planning default. One runtime per run applies to all scenarios. Scenarios default LOW,EXPECTED,HIGH; STRESS only when asked. Confirm each area using INCLUDED, EXCLUDED, UNKNOWN, NOT_APPLICABLE parameters.'
 RETURN to_json(named_struct(
   'use_case_id', p_use_case_id, 'use_case_name', p_use_case_name,
   'scenarios', transform(split(coalesce({N('p_scenarios')}, 'LOW,EXPECTED,HIGH'), ','), x -> upper(trim(x))),
-  'model_days_per_month', p_model_days_per_month,
+  'model_days_per_month', coalesce(p_model_days_per_month, 30),
   '_areas', map_from_entries(concat({AREA_LIST('p_included_areas', 'INCLUDED')}, {AREA_LIST('p_excluded_areas', 'EXCLUDED')},
                                     {AREA_LIST('p_unknown_areas', 'UNKNOWN')}, {AREA_LIST('p_not_applicable_areas', 'NOT_APPLICABLE')})),
-  'region', upper(replace({N('p_region')}, '-', '_')),
+  'region', coalesce(upper(replace({N('p_region')}, '-', '_')), 'US_EAST_1'),
   'processing', CASE WHEN {N('p_workload_type')} IS NOT NULL OR {N('p_component_id')} IS NOT NULL OR p_quantity IS NOT NULL
         OR p_runtime_hours_low IS NOT NULL OR p_runtime_hours_expected IS NOT NULL OR p_runtime_hours_high IS NOT NULL
         OR p_runs_per_month IS NOT NULL OR p_dbu_per_hour IS NOT NULL OR {N('p_latency_requirement')} IS NOT NULL
@@ -131,16 +132,18 @@ RETURN to_json(named_struct(
       'requires_custom_networking', p_requires_custom_networking)) END,
   'sql', CASE WHEN p_concurrent_users IS NOT NULL OR p_total_users IS NOT NULL OR p_working_days_per_month IS NOT NULL OR {N('p_sql_component_id')} IS NOT NULL THEN named_struct(
       'component_id', coalesce({N('p_sql_component_id')}, 'ADHOC-SQL'), 'name', 'SQL reporting', 'concurrent_users', p_concurrent_users,
-      'total_users', p_total_users, 'working_days_per_month', p_working_days_per_month) END,
-  'transfer', CASE WHEN coalesce(p_daily_gb_low, p_daily_gb_expected, p_daily_gb_high, p_initial_transfer_gb) IS NOT NULL THEN named_struct(
+      'total_users', p_total_users, 'working_days_per_month', coalesce(p_working_days_per_month, 22)) END,
+  'transfer', CASE WHEN coalesce(p_daily_gb_low, p_daily_gb_expected, p_daily_gb_high, p_initial_transfer_gb, p_transfer_days_per_month) IS NOT NULL THEN named_struct(
       'daily_gb_low', coalesce(p_daily_gb_low, p_daily_gb_expected), 'daily_gb_expected', p_daily_gb_expected,
       'daily_gb_high', coalesce(p_daily_gb_high, p_daily_gb_expected),
-      'transfer_days_per_month', p_transfer_days_per_month, 'initial_transfer_gb', p_initial_transfer_gb) END,
+      'transfer_days_per_month', coalesce(p_transfer_days_per_month, 22), 'initial_transfer_gb', p_initial_transfer_gb) END,
   'storage', CASE WHEN coalesce(p_retained_tb, p_files_per_day, p_encrypted_files_per_day, p_kms_keys, p_s3_read_requests_per_file,
                                p_s3_write_requests_per_file, p_kms_requests_per_encrypted_file, p_storage_days_per_month) IS NOT NULL THEN named_struct(
-      'retained_tb', p_retained_tb, 'files_per_day', p_files_per_day, 'encrypted_files_per_day', p_encrypted_files_per_day,
-      'kms_keys', p_kms_keys, 's3_read_requests_per_file', p_s3_read_requests_per_file, 'days_per_month', p_storage_days_per_month,
-      's3_write_requests_per_file', p_s3_write_requests_per_file, 'kms_requests_per_encrypted_file', p_kms_requests_per_encrypted_file) END,
+      'retained_tb', p_retained_tb, 'files_per_day', p_files_per_day, 'encrypted_files_per_day', coalesce(p_encrypted_files_per_day, 0.0),
+      'kms_keys', coalesce(p_kms_keys, 0.0), 's3_read_requests_per_file', p_s3_read_requests_per_file, 'days_per_month', coalesce(p_storage_days_per_month, 30),
+      's3_write_requests_per_file', coalesce(p_s3_write_requests_per_file, 1.0),
+      'kms_requests_per_encrypted_file', coalesce(p_kms_requests_per_encrypted_file, 1.0),
+      'request_assumptions_confirmed', coalesce(p_request_assumptions_confirmed, false)) END,
   'model_endpoints', CASE WHEN {N('p_model')} IS NOT NULL OR {N('p_model_component_id')} IS NOT NULL OR p_calls_per_day IS NOT NULL
         OR p_input_tokens_low IS NOT NULL OR p_input_tokens_expected IS NOT NULL OR p_input_tokens_high IS NOT NULL
         OR p_output_tokens_low IS NOT NULL OR p_output_tokens_expected IS NOT NULL OR p_output_tokens_high IS NOT NULL THEN array(named_struct(
@@ -173,7 +176,7 @@ RETURN
 stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_check_inputs({ARGS})
 RETURNS TABLE(use_case_id STRING, status STRING, section STRING, component_id STRING, field STRING, issue STRING, blocking BOOLEAN,
               expected STRING, received STRING, question STRING)
-COMMENT 'DCP INPUT CHECK as rows - NOT needed for estimates: dcp_calc_totals / dcp_calc_line_items / dcp_calc_details already run this check and return request_status NEEDS_INPUT. Use ONLY when the user explicitly asks to validate a request or what is missing, without asking for a cost. status READY = every required input is present and valid. status NEEDS_INPUT = ask the user every blocking row''s question (issue MISSING = required input not given, WRONG_TYPE = e.g. text "30" instead of the number 30, INVALID_VALUE = negative, unknown type/model or rejected by the calculator, UNKNOWN_FIELD = misspelt key, NOT_JSON, NO_WORKLOAD). blocking = false rows (RANGE_BOUND_MISSING) do not stop the estimate: that scenario shows PENDING. UNKNOWN_USE_CASE = the named use case was not found. {WHO} A JSON request pasted by the user goes in p_request verbatim.'
+COMMENT 'ALWAYS CALL FIRST for any new DCP estimate request (pasted JSON or facts in prose), before dcp_calc_totals. DCP input validation as rows; it does not price. Returns one direct question per missing or invalid input and every unconfirmed area state. status READY means required inputs are valid; NEEDS_INPUT means ask each blocking row''s question verbatim and wait for the answers. Nonblocking RANGE_BOUND_MISSING rows leave that scenario PENDING. Only on READY, calculate with dcp_calc_totals using the same request. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). A pasted request JSON goes in p_request verbatim. Optional p_overrides = JSON what-if map, e.g. ''{{"migration_gb": 8000, "retained_storage_tb": 8}}'' for a preset use case or dotted paths such as ''{{"transfer.daily_gb_high": 12}}''.'
 RETURN
   WITH {RESOLVE},
   chk AS (SELECT req.use_case_id, from_json(__FQ__.dcp_check(req.r, req.ov, req.named),
@@ -190,7 +193,7 @@ RETURNS TABLE(use_case_id STRING, use_case_name STRING, scenario STRING, scenari
               annual_usd DOUBLE, one_time_usd DOUBLE, first_year_usd DOUBLE, databricks_dbu DOUBLE, databricks_usd DOUBLE, aws_usd DOUBLE,
               pending_items INT, pending_detail STRING, status STRING, area_states STRING, confidence STRING, confidence_reason STRING, request_status STRING, errors STRING, next_step STRING,
               calculator_version STRING, rate_card_source STRING, disclaimer STRING)
-COMMENT 'DCP CALCULATOR - totals by scenario (LOW / EXPECTED / HIGH / STRESS): recurring_monthly_usd (all-in monthly), core_monthly_usd (processing + SQL + recurring DataSync), annual (Year 2 on), one-time, first year, Databricks DBU and USD, AWS USD, pending count and pending_detail (each PENDING item and why - always report it), status (COMPLETE or PARTIAL_PENDING_INPUTS), area_states (each calculator area: INCLUDED, EXCLUDED, UNKNOWN or NOT_APPLICABLE - always report EXCLUDED / UNKNOWN areas as not estimated), confidence. request_status NEEDS_INPUT + errors (one question per missing or invalid input; no numbers) when inputs must be supplied or corrected first, and next_step = exactly how to make the next call with the user''s answers (follow it; never write a request JSON yourself); REJECTED + errors when validation fails. Show the numbers exactly as returned. {WHO}'
+COMMENT 'CALL ONLY AFTER dcp_check_inputs has returned READY for the same request, or for a named preset use case (p_use_case). Never call first for a new or pasted request: run dcp_check_inputs first and ask for any missing inputs. DCP CALCULATOR - totals by scenario (LOW / EXPECTED / HIGH / STRESS): recurring_monthly_usd (all-in monthly), core_monthly_usd (processing + SQL + recurring DataSync), annual (Year 2 on), one-time, first year, Databricks DBU and USD, AWS USD, pending count and pending_detail (each PENDING item and why - always report it), status (COMPLETE or PARTIAL_PENDING_INPUTS), area_states (each calculator area: INCLUDED, EXCLUDED, UNKNOWN or NOT_APPLICABLE - always report EXCLUDED / UNKNOWN areas as not estimated), confidence. request_status NEEDS_INPUT + errors when inputs must be supplied or corrected first, and next_step = exactly how to make the next call with the user''s answers; REJECTED + errors when validation fails. Show the numbers exactly as returned. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. ''{{"migration_gb": 8000, "retained_storage_tb": 8}}'' for a preset use case or dotted paths such as ''{{"transfer.daily_gb_high": 12}}''.'
 RETURN
   WITH jj AS (SELECT r.use_case_id, from_json(r.result, '{RESULT}') AS j FROM {CALL} r)
   SELECT jj.use_case_id, jj.j.header.use_case_name, t.scenario, t.label, t.recurring_monthly_usd, t.core_monthly_usd, t.annual_usd,
@@ -236,7 +239,7 @@ q = lambda v: "NULL" if v is None else "'" + str(v).replace("\\", "\\\\").replac
 INTAKE = ",\n    ".join("(" + ", ".join(q(v) for v in r) + ")" for r in adapter_module.intake_questions(m))
 stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_intake_questions(p_area STRING DEFAULT NULL)
 RETURNS TABLE(area STRING, field STRING, type STRING, requirement STRING, default_value STRING, question STRING)
-COMMENT 'DCP GUIDED INTAKE - every input of the calculator v{VERSION} request, per area (processing, sql, transfer, storage, model_endpoints, one_time_model_jobs), generated from the request schema: requirement REQUIRED (no default; must be asked), DEFAULT (the calculator applies default_value - show it and let the user change it) or OPTIONAL. Use for a guided estimate: ask the REQUIRED questions of each included area and show its defaults explicitly. p_area filters to one area.'
+COMMENT 'DCP GUIDED INTAKE - request fields and REQUIRED/DEFAULT/OPTIONAL questions from the calculator schema. p_area is an area id: processing, sql, transfer, storage, model_endpoints, or one_time_model_jobs; use processing for scheduled batch and streaming workloads, not the workload type as p_area. Show defaults to users. Use after discovery or when no facts are provided; dcp_check_inputs returns exact missing-input questions for partially supplied requests.'
 RETURN
   SELECT * FROM VALUES
     {{INTAKE}}

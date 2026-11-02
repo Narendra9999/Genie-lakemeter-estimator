@@ -3,7 +3,7 @@ RETURNS TABLE(category_id STRING, category STRING, product_id STRING, product ST
               entrypoints STRING, implementation_state STRING, validation_state STRING, use_when STRING,
               required_facts STRING, pricing_basis STRING, region_scope STRING, status_note STRING,
               evidence_ref STRING, catalog_as_of STRING)
-COMMENT 'Estimator coverage catalog for discovery and routing. Omit p_category to list all categories and products; optionally pass a category id such as COMPUTE or SQL. The catalog distinguishes implementation from validation, documents pricing basis, and is not a price source or a calculator.'
+COMMENT 'Detailed estimator coverage catalog. For available category/product/workload menus query cost_estimator_functional_capabilities FIRST. Use this function for detailed pricing basis, requirements and unsupported product coverage; do not substitute dcp_requests. Omit p_category to list all products; optionally filter by a category id such as COMPUTE or SQL. Distinguishes implementation from validation and documents price basis; not a price source or calculator.'
 RETURN
   SELECT category_id, category, product_id, product, engine, entrypoints, implementation_state, validation_state,
          use_when, required_facts, pricing_basis, region_scope, status_note, evidence_ref, catalog_as_of
@@ -41,5 +41,6 @@ RETURN
   (10, 'COMPUTE', 'Compute and cluster sizing', 'DCP_SERVERLESS_PIPELINE', 'Serverless pipeline compute in the DCP calculator', 'DCP_CALCULATOR', 'dcp_calc_totals', 'PENDING', 'UNTESTED', 'DCP streaming workload requires serverless pipeline compute.', 'A supported pipeline rate and validated classification are required.', 'No DCP pipeline rate; return PENDING.', 'Not available in the DCP registry.', 'Do not substitute Jobs serverless pricing for pipeline compute.', 'calculator/rate_registry_seed.json; reviewed 2026-10-29.', '2026-10-29')
   AS v(category_order, category_id, category, product_id, product, engine, entrypoints, implementation_state,
        validation_state, use_when, required_facts, pricing_basis, region_scope, status_note, evidence_ref, catalog_as_of)
-  WHERE p_category IS NULL OR upper(trim(p_category)) IN (upper(category_id), upper(category))
+  WHERE p_category IS NULL OR upper(trim(p_category)) IN ('', 'NULL', 'NONE', 'N/A')
+     OR upper(trim(p_category)) IN (upper(category_id), upper(category))
   ORDER BY category_order, product_id

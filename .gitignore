@@ -3,3 +3,5 @@ __pycache__/
 benchmark/results/
 .databricks/
 dab-config.yml
+.claude/
+genie/live_sync_backup_*/

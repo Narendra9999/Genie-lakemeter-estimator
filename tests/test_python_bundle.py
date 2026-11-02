@@ -43,7 +43,8 @@ class PythonBundleTests(unittest.TestCase):
         }
         check = json.loads(adapter.run_check(estimator, missing, None, False))
         self.assertEqual(check["status"], "NEEDS_INPUT")
-        self.assertTrue(any(row["field"] == "runs_per_month" for row in check["issues"]))
+        run_issue = next(row for row in check["issues"] if row["field"] == "runs_per_month")
+        self.assertEqual(run_issue["question"], "How many runs per month?")
         result = json.loads(adapter.run(estimator, missing, {"rows": []}, named=False))
         self.assertEqual(result["status"], "NEEDS_INPUT")
         self.assertEqual(result["totals"], [])

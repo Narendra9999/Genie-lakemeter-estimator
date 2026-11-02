@@ -67,17 +67,24 @@ def ask_genie(question, cid=None):
         m = api("get", f"/api/2.0/genie/spaces/{SID}/conversations/{cid}/messages/{mid}")
         if m.get("status") in ("COMPLETED", "FAILED", "CANCELLED"): break
         time.sleep(3)
-    sqls, rows, texts = [], [], []
+    sqls, rows, texts, query_errors = [], [], [], []
+    if m.get("status") != "COMPLETED":
+        query_errors.append(f"Genie message status {m.get('status')}: {m.get('error')}")
     for a in m.get("attachments") or []:
         if "text" in a: texts.append(a["text"].get("content", ""))
         if "query" in a:
             sqls.append(a["query"].get("query", ""))
             res = api("get", f"/api/2.0/genie/spaces/{SID}/conversations/{cid}/messages/{mid}/attachments/{a['attachment_id']}/query-result")
             st = res.get("statement_response", {})
+            stmt_status = st.get("status")
+            if isinstance(stmt_status, dict) and stmt_status.get("state") not in (None, "SUCCEEDED"):
+                query_errors.append(str(stmt_status.get("error") or stmt_status))
+            if res.get("error"):
+                query_errors.append(str(res["error"]))
             cols = [c["name"] for c in st.get("manifest", {}).get("schema", {}).get("columns", [])]
             for row in st.get("result", {}).get("data_array") or []:
                 rows.append(dict(zip(cols, row)))
-    return {"status": m.get("status"), "conversation_id": cid, "sql": sqls, "rows": rows, "text": "\n".join(texts)}
+    return {"status": m.get("status"), "conversation_id": cid, "sql": sqls, "rows": rows, "text": "\n".join(texts), "query_errors": query_errors}
 
 
 NUM = re.compile(r"-?\$?\d[\d,]*\.?\d*")
@@ -138,7 +145,7 @@ GUIDED_ANSWER = ("All six areas are included. Processing: scheduled batch, 1 hou
                  "S3/KMS: 1 TB retained, 100 files/day, 10 encrypted files/day, 1 KMS key, 1 write and 2 reads per file, "
                  "1 KMS request per encrypted file; these request values are confirmed. Recurring model API: gpt-5-4, "
                  "100 calls/day, 1,000 input and 100 output tokens/call. One-time indexing: gpt-5-4, 1,000 input and 100 output tokens, 100 API calls. "
-                 "Return LOW, EXPECTED and HIGH only; show line items and the area states.")
+                 "Return LOW, EXPECTED and HIGH totals, the one-time cost, and the final area states.")
 CASES = [
  dict(n=1, q="What is the High core monthly estimate for SEND_US01?", use_case="SEND_US01",
       figures=lambda r: [T(r, "HIGH", "core_monthly_usd")], v4=[531.78]),
@@ -198,26 +205,37 @@ CASES = [
       # Workbook pass rule: "Error names the field". The question does not say which daily value (low/expected/high),
       # so any transfer.daily_gb_* field rejected as non-negative passes; the workbook's own input used daily_gb_high.
       words_regex=[r"transfer\.daily_gb_(low|expected|high) must be a non-negative number"], no_figures=True),
- dict(n=21, q="Estimate this workload and show line items. Return only LOW, EXPECTED and HIGH; keep component IDs NEW-C01 and NEW-SQL.",
-      request=ROUTING_REQ, figures=lambda r: [], followup=FOLLOWUP,
+ dict(n=21, q="Estimate scheduled batch processing: 1 hour per run, 20 runs/month, component ID NEW-C01; plus SQL reporting: 8 concurrent users, 20 working days/month, component ID NEW-SQL. Return only LOW, EXPECTED and HIGH, show line items and area states.",
+      request=ROUTING_REQ, figures=lambda r: [], followup=FOLLOWUP, required_first_turn_functions=["dcp_check_inputs"],
+      forbidden_first_turn_sql_regex=[r"dcp_calc_(totals|line_items|details)", r"dcp_calc_area_states"],
+      forbidden_sql_regex=[r"p_request\s*=>\s*request\b", r"dcp_calc_area_states"],
       expected_scenarios=["LOW", "EXPECTED", "HIGH"], expected_component_ids=["NEW-C01", "NEW-SQL"]),
- dict(n=22, q="Estimate this request exactly as supplied:\\n" + json.dumps(JSON_ROUTING_REQ),
-      request=JSON_ROUTING_REQ, figures=lambda r: [], followup=None,
-      expected_scenarios=["LOW", "EXPECTED", "HIGH"], expected_component_ids=["NEW-C01", "NEW-SQL"]),
+ dict(n=22, q=json.dumps(JSON_ROUTING_REQ),
+      request=JSON_ROUTING_REQ, figures=lambda r: [T(r, s, "recurring_monthly_usd") for s in ("LOW", "EXPECTED", "HIGH")], followup=None,
+      expected_scenarios=["LOW", "EXPECTED", "HIGH"]),
  dict(n=23, q="A scheduled batch takes 2 hours per run. What is the monthly cost?",
       request={**ADHOC, "processing": [P(workload_type="SCHEDULED_BATCH", runtime_hours_low=2, runtime_hours_expected=2, runtime_hours_high=2, runs_per_month=30)]},
       figures=lambda r: [T(r, "EXPECTED", "recurring_monthly_usd")], followup="30 runs per month. The other calculator areas are not applicable.",
-      required_first_turn_words=["runs per month"], direct_first_turn_question=True),
+      required_first_turn_functions=["dcp_check_inputs"], required_first_turn_regex=[r"how many runs per month\?"], direct_first_turn_question=True,
+      forbidden_first_turn_sql_regex=[r"dcp_calc_(totals|line_items|details)"],
+      forbidden_sql_regex=[r"p_request\s*=>\s*request\b", r"dcp_calc_area_states"]),
  dict(n=24, q="I need a DCP estimate for a daily scheduled batch. What information do you need?", route_only=True,
-      route_must_contain=["run"], route_must_not_functions=["size_cluster", "estimate_sized_workload", "estimate_jobs_classic_cost"]),
+      route_must_contain=["runtime", "runs per month"], route_text_must_contain=["runtime", "runs per month"], route_must_not_contain=["30 runs per month"],
+      route_must_not_functions=["size_cluster", "estimate_sized_workload", "estimate_jobs_classic_cost", "dcp_calc_totals", "dcp_calc_line_items", "dcp_calc_details"],
+      route_required_functions=["dcp_intake_questions"], route_required_sql_regex=[r"p_area\s*=>\s*'processing'"], route_requires_question=True,
+      route_forbidden_sql_regex=[r"p_runs_per_month\s*=>", r"p_runtime_hours_expected\s*=>"]),
  dict(n=25, q="What cost categories can you estimate? I need SQL and storage; let me choose more than one.", route_only=True,
       route_required_functions=["estimator_catalog"], route_must_contain=["SQL", "storage"]),
  dict(n=26, q="Can you estimate AI Gateway? If it is not covered, tell me rather than guessing a cost.", route_only=True,
       route_required_functions=["estimator_catalog"], route_must_contain=["AI Gateway"], route_must_contain_any=["not ported", "unsupported", "PENDING"]),
  dict(n=27, q="Help me build a DCP estimate covering processing, SQL, DataSync, S3/KMS, recurring model API use, and one-time indexing.",
-      request=FULL_GUIDED_REQ, figures=lambda r: [], followup=GUIDED_ANSWER, expect_area_question=False,
-      expected_scenarios=["LOW", "EXPECTED", "HIGH"],
-      expected_component_ids=["GUIDED-C01", "GUIDED-SQL", "GUIDED-MODEL", "GUIDED-INDEX"]),
+      request=FULL_GUIDED_REQ,
+      figures=lambda r: [T(r, s, "recurring_monthly_usd") for s in ("LOW", "EXPECTED", "HIGH")] + [T(r, "EXPECTED", "one_time_usd")],
+      words=lambda r: [f"{a}: INCLUDED" for a in AREAS], followup=GUIDED_ANSWER, expect_area_question=False,
+      required_first_turn_functions_any=["dcp_intake_questions", "dcp_check_inputs"],
+      forbidden_first_turn_sql_regex=[r"dcp_calc_(totals|line_items|details)"],
+      forbidden_sql_regex=[r"p_request\s*=>\s*request\b", r"dcp_calc_area_states"],
+      expected_scenarios=["LOW", "EXPECTED", "HIGH"]),
 ]
 
 
@@ -250,16 +268,24 @@ def main():
             blob = (agent["text"] + " " + json.dumps(agent["rows"])).lower()
             sql_blob = "\n".join(agent["sql"]).lower()
             missing = [term for term in c.get("route_must_contain", []) if term.lower() not in blob]
+            missing += [term for term in c.get("route_text_must_contain", []) if term.lower() not in agent["text"].lower()]
             if c.get("route_must_contain_any") and not any(term.lower() in blob for term in c["route_must_contain_any"]):
                 missing.append("one of: " + ", ".join(c["route_must_contain_any"]))
             missing += [f"missing SQL function {name}" for name in c.get("route_required_functions", []) if name.lower() not in sql_blob]
+            if c.get("route_required_functions_any") and not any(name.lower() in sql_blob for name in c["route_required_functions_any"]):
+                missing.append("one of functions: " + ", ".join(c["route_required_functions_any"]))
+            missing += [rx for rx in c.get("route_required_sql_regex", []) if not re.search(rx, sql_blob, re.I)]
+            if c.get("route_requires_question") and "?" not in agent["text"]:
+                missing.append("direct question")
             forbidden = [name for name in c.get("route_must_not_functions", []) if name.lower() in sql_blob]
+            forbidden += [term for term in c.get("route_must_not_contain", []) if term.lower() in blob]
+            forbidden += [rx for rx in c.get("route_forbidden_sql_regex", []) if re.search(rx, sql_blob, re.I)]
             leaked = [v for v in dollars_in(agent["text"]) if v != 0]
-            verdict = "PASS" if not missing and not forbidden and not leaked else "FAIL"
+            verdict = "PASS" if not missing and not forbidden and not leaked and not agent["query_errors"] else "FAIL"
             why = "; ".join(x for x in [f"missing {missing}" if missing else "", f"used forbidden functions {forbidden}" if forbidden else "",
-                                        f"showed figures {leaked}" if leaked else ""] if x) or "route/coverage behavior matched"
+                                        f"showed figures {leaked}" if leaked else "", f"SQL errors {agent['query_errors']}" if agent["query_errors"] else ""] if x) or "route/coverage behavior matched"
             results.append({"n": c["n"], "question": c["q"], "calculator_answer": "Route-only acceptance case", "calculator_figures": [],
-                            "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12],
+                            "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12], "agent_query_errors": agent["query_errors"],
                             "agent_pass": verdict, "agent_notes": why, "agent_first_turn": None,
                             "engine_governed_figures": [], "v4_expected_figures": [], "parity_v4": "NOT_APPLICABLE",
                             "conversation_id": agent["conversation_id"]})
@@ -280,18 +306,25 @@ def main():
         first = None
         if c.get("request") is not None and c.get("followup", FOLLOWUP):
             # Turn one must request unresolved scope and any explicitly tested missing inputs, without figures.
+            first_blob = agent["text"]
             leaked = [v for v in dollars_in(agent["text"]) if v != 0]
-            asked = re.search(r"not applicable|applicable|\barea", agent["text"], re.I) is not None
+            asked = re.search(r"not applicable|applicable|\barea", first_blob, re.I) is not None
             expect_areas = c.get("expect_area_question", True)
-            missing_first = [term for term in c.get("required_first_turn_words", []) if term.lower() not in agent["text"].lower()]
-            direct_question = ("?" in agent["text"] or re.search(r"how many|what is|please provide|which", agent["text"], re.I) is not None)
+            missing_first = [term for term in c.get("required_first_turn_words", []) if term.lower() not in first_blob.lower()]
+            missing_first += [rx for rx in c.get("required_first_turn_regex", []) if not re.search(rx, first_blob, re.I)]
+            first_sql = "\n".join(agent["sql"]).lower()
+            missing_first += [f"missing SQL function {name}" for name in c.get("required_first_turn_functions", []) if name.lower() not in first_sql]
+            missing_first += [f"forbidden SQL pattern {pattern}" for pattern in c.get("forbidden_first_turn_sql_regex", []) if re.search(pattern, first_sql, re.I)]
+            if c.get("required_first_turn_functions_any") and not any(name.lower() in first_sql for name in c["required_first_turn_functions_any"]):
+                missing_first.append("one of functions: " + ", ".join(c["required_first_turn_functions_any"]))
+            direct_question = ("?" in first_blob or re.search(r"how many|what is|please provide|which", first_blob, re.I) is not None)
             if c.get("direct_first_turn_question") and not direct_question:
                 missing_first.append("a direct question")
             first_pass = (asked or not expect_areas) and not leaked and not missing_first
             first_notes = ["" if asked or not expect_areas else "did not ask for the area states",
                            f"figures shown before areas were confirmed {leaked}" if leaked else "",
                            f"missing first-turn requirements {missing_first}" if missing_first else ""]
-            first = {"text": agent["text"], "sql": agent["sql"], "pass": first_pass,
+            first = {"text": agent["text"], "sql": agent["sql"], "rows": agent["rows"][:12], "pass": first_pass,
                      "notes": "; ".join(x for x in first_notes if x) or "asked targeted questions without figures"}
             agent = ask_genie(c.get("followup", FOLLOWUP), agent["conversation_id"])
         nums = numbers_in(agent)
@@ -308,6 +341,10 @@ def main():
         missing_ids = [x for x in c.get("expected_component_ids", []) if x not in actual_ids]
         if missing_ids:
             missing_words.append(f"missing component ids {missing_ids}")
+        if agent["query_errors"]:
+            missing_words.append(f"SQL errors {agent['query_errors']}")
+        final_sql = "\n".join(agent["sql"])
+        missing_words += [f"forbidden SQL pattern {pattern}" for pattern in c.get("forbidden_sql_regex", []) if re.search(pattern, final_sql, re.I)]
         if c.get("no_figures") and res is not None:   # NEEDS_INPUT: the agent must ask, not estimate
             cost_nums = [v for v in dollars_in(agent["text"]) if v != 0]
             verdict = "PASS" if used_calc and not own_math and not missing_words and not cost_nums else "FAIL"
@@ -352,7 +389,7 @@ def main():
         else:
             parity = "DIFFER"
         results.append({"n": c["n"], "question": c["q"], "calculator_answer": summarize_calc(c, res), "calculator_figures": figs,
-                        "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12], "agent_pass": verdict, "agent_notes": why, "agent_first_turn": first,
+                        "agent_sql": agent["sql"], "agent_text": agent["text"], "agent_rows": agent["rows"][:12], "agent_query_errors": agent["query_errors"], "agent_pass": verdict, "agent_notes": why, "agent_first_turn": first,
                         "engine_governed_figures": gfigs, "v4_expected_figures": v4, "parity_v4": parity, "conversation_id": agent["conversation_id"]})
         print(f"   agent {verdict} ({why}) | parity v4.0.2 {parity} gov={gfigs} v4={v4}", flush=True)
     os.makedirs(OUT, exist_ok=True)

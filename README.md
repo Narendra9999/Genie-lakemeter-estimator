@@ -50,6 +50,44 @@ python3 -I calculator/build_all.py
 
 These checks do not deploy or update a live Genie Agent. Run the `setup_agent` job only after reviewing the generated agent definition.
 
+## Category discovery and guided intake
+
+The one-time setup includes all category/input-reference and agent-flow changes:
+
+| Object | Purpose | Maintained source |
+|---|---|---|
+| `cost_estimator_functional_capabilities` | 28 categories: 9 DCP workloads, 14 Lakemeter products, 5 sizing paths | `genie/catalog/functional_capabilities.json`, enriched from `estimator_catalog.json` |
+| `dcp_engine_input_requirements` | 62 schema fields across 5 engines / 6 request sections; conditions, units, defaults and questions | `calculator/build_engine_inputs.py`, calculator dataclasses and adapter intake metadata |
+| `estimator_catalog()` | Detailed coverage, implementation/validation state and pricing basis | `genie/catalog/estimator_catalog.json` |
+
+`calculator/build_all.py` generates `sql/11_functional_capabilities.sql`,
+`sql/12_dcp_engine_inputs.sql` and embeds both in `setup_genie_dcp_agent.py`.
+The uploaded setup notebook needs no runtime access to these source files. It creates the two reference tables,
+attaches them to Genie with metadata, and installs the current instructions and discovery/input examples.
+Re-running setup replaces the generated reference contents; maintain their sources rather than editing deployed rows.
+No metric view or external orchestration service is required for these reference lookups.
+
+The intended conversation flow is:
+
+1. For vague requests, clarify the goal, list available categories and ask the user to select one or more.
+2. For a selected category, retrieve applicable inputs and ask only for missing values with units and defaults.
+3. For DCP, offer the remaining categories without adding scope or re-asking confirmed exclusions.
+4. Validate the actual request, calculate using the supported functions and disclose pending items and validation/pricing status.
+
+Examples may be supplied when helpful, are explicitly illustrative, and never become confirmed inputs automatically.
+Raw JSON and plain-language requests follow the same coverage-based routing.
+
+**Known live limitations:** native Genie sometimes returns a table without the intended written follow-up,
+omits the remaining-category offer, or omits requested JSON examples. Source instructions express the flow;
+they do not guarantee it. An enforced state/response layer is still needed for guaranteed conversation behavior.
+Mixed-method queries and identifier preservation also have outstanding live failures; do not infer full compliance
+from offline checks. Lakemeter catalog rows retain their existing UNTESTED status.
+
+To update an existing installation, rebuild and run the setup notebook with the existing `space_id`, target
+catalog/schema and warehouse. Set `load_pricing_tables=false` when reference pricing tables already exist
+and no reload is intended. Review permissions and rate-source settings before running; setup grants only the
+configured group. This code update does not itself execute setup or change live rates/access.
+
 ## Deploy with a bundle (jobs for setup and maintenance)
 
 `databricks.yml` is a Declarative Automation Bundle that deploys this repo and three jobs:
@@ -257,8 +295,8 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
 | `dcp_calc_line_items(..., p_scenario)` | Every priced or PENDING line: quantity, unit, rate, rate status/source, cost, treatment, evidence, formula |
 | `dcp_calc_details(...)` | Summary, confidence, pending items, compute decisions, assumptions, warnings, scope, rates used, errors |
 | `dcp_request(p_workload_type =>, p_runtime_hours_expected =>, p_concurrent_users =>, ..., p_not_applicable_areas =>)` | Builds an ad-hoc request from stated values, the user's identifiers, the requested scenarios (default LOW / EXPECTED / HIGH) and the state of each area |
-| `dcp_intake_questions(p_area)` | Guided intake generated from the request schema: every input per area, `REQUIRED` / `DEFAULT` (with the default value) / `OPTIONAL`, and its question |
-| `dcp_check_inputs(p_use_case \| p_request, p_overrides)` | The input check as rows (SQL / API use; not registered in the Genie agent) |
+| `dcp_intake_questions(p_area)` | Guided intake generated from the request schema: every input per area, `REQUIRED` / `DEFAULT` (with the default value) / `OPTIONAL`, and its question; `p_area` is a DCP area id (e.g. `processing`), not a workload type |
+| `dcp_check_inputs(p_use_case \| p_request, p_overrides)` | Structured validation rows, including one direct `question` per blocking input. Genie uses this for targeted intake; estimates still revalidate in `dcp_calc_*` |
 
 - **Named use cases** live in `dcp_requests`: a calculator preset (`SEND_US01`, `AI_RAG_MODEL_API`) or an
   `EstimateRequest` JSON (see `new_workload_template()` in the calculator; samples in `samples/requests/`).
@@ -268,7 +306,7 @@ Genie / MCP / SQL ──► dcp_calc_totals | dcp_calc_line_items | dcp_calc_det
   the Databricks DBU rows from `system.billing.account_prices` (`GOVERNED`) or, where account prices are not available,
   `system.billing.list_prices` (`REFERENCE_ONLY`). No price → `PENDING`; there is no fallback.
 - **Input check before any math**: every `dcp_calc_*` call checks the request first (`calculator/dcp_adapter.py`
-  `check()`; the calculator itself is unchanged). If anything is missing or wrong, nothing is priced: `request_status` is
+  `check()`; the calculator itself is unchanged). For targeted intake, `dcp_check_inputs` exposes the same validation as rows with one direct `question` per blocking input; calculate only after it is READY. If anything is missing or wrong, nothing is priced: `request_status` is
   `NEEDS_INPUT` and `errors` holds one question per item — `MISSING` (an input with no calculator default, e.g. runs per
   month for a scheduled batch, concurrent SQL users, GB per day, retained TB, files per day, reads per file, model calls
   and tokens), `WRONG_TYPE` (e.g. `"30"` instead of `30`), `INVALID_VALUE` (negative, unknown workload type or model, or
@@ -314,3 +352,41 @@ so those exact historical cases remain unreproducible until their source inputs 
 - Always-on workloads (Model Serving, Vector Search, Lakebase) bill `24 × days_per_month` hours.
 - Not yet ported: AI Gateway, Agent Evaluation, AI Runtime (training), General Storage,
   Zerobus, Shutterstock ImageAI, Lakeflow Connect, and SKU-specific discount handling.
+
+## Focused input display and workload joins
+
+`cost_estimator_workload_inputs` maps every capability to its applicable intake fields.
+It is generated by `calculator/build_workload_inputs.py` into `sql/13_workload_inputs.sql`
+and embedded in the one-time setup. DCP metadata is derived from the schema reference; Lakemeter
+argument names come from SQL function signatures with explicit conditional-input rules.
+Join by **capability_id and estimate_type**, then filter exact selected categories and estimate kind.
+Display only Input / What to provide / Unit; confirm defaults separately. Reuse known answers.
+The [exported SQL examples](genie/intake_behavior_examples.md) mirror the live agent;
+its current scope is defined by `genie/instructions.md`. Function signature presence does not make
+every parameter a required user input; check conditional modes and actual request validation.
+
+## Live Genie configuration sync — November 2, 2026
+
+The primary code configuration now mirrors fevm-naren agent
+`01f1c809927f1586bbd2566786d9c455`, updated at `2026-11-02T19:02:17.134Z`.
+Its current policy is **DCP monthly and one-time totals only**; Lakemeter, sizing,
+line items and details are out of scope. The broader registrations and examples
+remain exactly as configured live.
+
+[genie/serialized_space.json](genie/serialized_space.json) preserves the complete
+portable payload and asset IDs. The same payload is embedded in
+`genie/space_definition.json` and the regenerated one-time installer.
+[genie/instructions.md](genie/instructions.md) contains the exact live policy.
+[genie/live_function_definitions.json](genie/live_function_definitions.json) records
+all 42 reviewed function definitions. Only the live descriptions for
+`dcp_check_inputs` and `dcp_calc_totals` differed substantively; their generator and
+SQL definitions are synchronized. Calculation logic and function contracts match.
+
+See [the sync report](genie/LIVE_SYNC.md) for checks and limitations. This was a
+live-to-code sync only: no live agent or workspace objects were changed. Export
+new UI/function edits before rebuilding or deploying so local artifacts cannot
+silently replace them with an older policy.
+
+## Separate DCP-only agent
+
+The focused DCP Calculator agent uses the existing calculator with validation-first guided intake. Source, deployment instructions and Agent-mode validation evidence are in [genie/dcp_only](genie/dcp_only/README.md). The existing mixed estimator installer and agent are unchanged.

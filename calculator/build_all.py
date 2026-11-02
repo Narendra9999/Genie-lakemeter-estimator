@@ -7,6 +7,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 SCRIPTS = (
     "build_sql.py",
     "build_catalog.py",
+    "build_capabilities.py",
+    "build_engine_inputs.py",
+    "build_workload_inputs.py",
     "build_notebook.py",
     "build_setup.py",
 )

@@ -1,0 +1,93 @@
+[
+  {
+    "response": {
+      "id": "01f1d6f0484b1ecbbdc1a55d989474c2",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d6f047e61db9903c21db3b7cfe10",
+      "created_at": 1793646291.862,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## What I need for your cost estimate\n\nThe calculator covers five engines. Tell me which ones apply to your workload:\n\n1. **Processing**: Databricks batch, streaming, ML training or batch scoring jobs.\n2. **SQL Reporting**: dashboards and ad hoc SQL.\n3. **DataSync Transfer**: AWS DataSync data movement or migration.\n4. **S3 and KMS Storage**: storage, requests and encryption.\n5. **Model API**: pay-per-token model calls (recurring endpoints) and one-time token jobs, such as initial indexing.\n\nYou can also name an existing use case, such as SEND_US01 or AI_RAG_MODEL_API, and I'll estimate that one directly.\n\n### Inputs by engine\n- **Processing**\n  - Workload type: continuous streaming, event-driven batch, scheduled batch, ML training or batch scoring.\n  - Hours per run (optionally a low, expected and high value).\n  - Runs per month. Streaming doesn't need this, and event-driven batch has a planning default.\n- **SQL Reporting**\n  - Number of concurrent users.\n  - Working days per month, if it differs from the default of 22.\n- **DataSync**\n  - GB per day (optionally low, expected and high). Enter 0 if there is only a one-time migration.\n  - One-time migration size in GB, if any.\n- **S3 and KMS**\n  - TB retained.\n  - Files written per day.\n  - How many times each file is read.\n  - Optionally, encrypted files per day and the number of KMS keys.\n- **Model API**\n  - Model name. Priced models are gpt-5.4-nano, gte-large-en, gpt-5-4 and claude-sonnet-4-6.\n  - Calls per day.\n  - Input and output tokens per call (expected, or a low and high).\n  - For one-time jobs: total input and output token ranges.\n\n### Also helpful\n- Which scenarios you want. The default is LOW, EXPECTED and HIGH. I only add STRESS if you ask.\n- Any areas that are not applicable or excluded. I need an explicit answer for each of the five engines, because I can't treat silence as \"not applicable\".\n\nA plain-language description is fine. For example: \"scheduled batch, 2 hours per run, 20 runs per month, plus 10 SQL users, nothing else.\" I'll check it for gaps before I calculate anything.\n\nResults are planning estimates, not invoices.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01ESLYVJMYSLzGKz8Ga3S9PD",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d6f0484b1ecbbdc1a55d989474c2"
+      },
+      "created_at": 1793646302.817,
+      "completed_at": 1793646302.817
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## What I need for your cost estimate\n\nThe calculator covers five engines. Tell me which ones apply to your workload:\n\n1. **Processing**: Databricks batch, streaming, ML training or batch scoring jobs.\n2. **SQL Reporting**: dashboards and ad hoc SQL.\n3. **DataSync Transfer**: AWS DataSync data movement or migration.\n4. **S3 and KMS Storage**: storage, requests and encryption.\n5. **Model API**: pay-per-token model calls (recurring endpoints) and one-time token jobs, such as initial indexing.\n\nYou can also name an existing use case, such as SEND_US01 or AI_RAG_MODEL_API, and I'll estimate that one directly.\n\n### Inputs by engine\n- **Processing**\n  - Workload type: continuous streaming, event-driven batch, scheduled batch, ML training or batch scoring.\n  - Hours per run (optionally a low, expected and high value).\n  - Runs per month. Streaming doesn't need this, and event-driven batch has a planning default.\n- **SQL Reporting**\n  - Number of concurrent users.\n  - Working days per month, if it differs from the default of 22.\n- **DataSync**\n  - GB per day (optionally low, expected and high). Enter 0 if there is only a one-time migration.\n  - One-time migration size in GB, if any.\n- **S3 and KMS**\n  - TB retained.\n  - Files written per day.\n  - How many times each file is read.\n  - Optionally, encrypted files per day and the number of KMS keys.\n- **Model API**\n  - Model name. Priced models are gpt-5.4-nano, gte-large-en, gpt-5-4 and claude-sonnet-4-6.\n  - Calls per day.\n  - Input and output tokens per call (expected, or a low and high).\n  - For one-time jobs: total input and output token ranges.\n\n### Also helpful\n- Which scenarios you want. The default is LOW, EXPECTED and HIGH. I only add STRESS if you ask.\n- Any areas that are not applicable or excluded. I need an explicit answer for each of the five engines, because I can't treat silence as \"not applicable\".\n\nA plain-language description is fine. For example: \"scheduled batch, 2 hours per run, 20 runs per month, plus 10 SQL users, nothing else.\" I'll check it for gaps before I calculate anything.\n\nResults are planning estimates, not invoices.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01ESLYVJMYSLzGKz8Ga3S9PD",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d6f0484b1ecbbdc1a55d989474c2"
+      },
+      "created_at": 1793646302.817,
+      "completed_at": 1793646302.817
+    },
+    "sequence_number": 2
+  },
+  {
+    "response": {
+      "id": "01f1d6f0484b1ecbbdc1a55d989474c2",
+      "status": "completed",
+      "output": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "## What I need for your cost estimate\n\nThe calculator covers five engines. Tell me which ones apply to your workload:\n\n1. **Processing**: Databricks batch, streaming, ML training or batch scoring jobs.\n2. **SQL Reporting**: dashboards and ad hoc SQL.\n3. **DataSync Transfer**: AWS DataSync data movement or migration.\n4. **S3 and KMS Storage**: storage, requests and encryption.\n5. **Model API**: pay-per-token model calls (recurring endpoints) and one-time token jobs, such as initial indexing.\n\nYou can also name an existing use case, such as SEND_US01 or AI_RAG_MODEL_API, and I'll estimate that one directly.\n\n### Inputs by engine\n- **Processing**\n  - Workload type: continuous streaming, event-driven batch, scheduled batch, ML training or batch scoring.\n  - Hours per run (optionally a low, expected and high value).\n  - Runs per month. Streaming doesn't need this, and event-driven batch has a planning default.\n- **SQL Reporting**\n  - Number of concurrent users.\n  - Working days per month, if it differs from the default of 22.\n- **DataSync**\n  - GB per day (optionally low, expected and high). Enter 0 if there is only a one-time migration.\n  - One-time migration size in GB, if any.\n- **S3 and KMS**\n  - TB retained.\n  - Files written per day.\n  - How many times each file is read.\n  - Optionally, encrypted files per day and the number of KMS keys.\n- **Model API**\n  - Model name. Priced models are gpt-5.4-nano, gte-large-en, gpt-5-4 and claude-sonnet-4-6.\n  - Calls per day.\n  - Input and output tokens per call (expected, or a low and high).\n  - For one-time jobs: total input and output token ranges.\n\n### Also helpful\n- Which scenarios you want. The default is LOW, EXPECTED and HIGH. I only add STRESS if you ask.\n- Any areas that are not applicable or excluded. I need an explicit answer for each of the five engines, because I can't treat silence as \"not applicable\".\n\nA plain-language description is fine. For example: \"scheduled batch, 2 hours per run, 20 runs per month, plus 10 SQL users, nothing else.\" I'll check it for gaps before I calculate anything.\n\nResults are planning estimates, not invoices.",
+              "annotations": []
+            }
+          ],
+          "id": "pub_toolu_bdrk_01ESLYVJMYSLzGKz8Ga3S9PD",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d6f0484b1ecbbdc1a55d989474c2"
+          },
+          "created_at": 1793646302.817,
+          "completed_at": 1793646302.817
+        }
+      ],
+      "conversation_id": "01f1d6f047e61db9903c21db3b7cfe10",
+      "created_at": 1793646291.862,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 3,
+    "type": "response.completed"
+  }
+]

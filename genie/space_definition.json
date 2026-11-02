@@ -1,1190 +1,3048 @@
 {
- "title": "Lakemeter Cost Estimator",
- "description": "Databricks cost estimation agent, priced at governed account rates. (1) DCP Smart Estimation through the DCP calculator: LOW / EXPECTED / HIGH / STRESS monthly, one-time and first-year costs for named use cases or described workloads (streaming, scheduled and event-driven batch, SQL reporting, DataSync, S3/KMS, pay-per-token model APIs), with line items, confidence and pending items. (2) Workload sizing: recommends a job cluster from the workload type, data volume and frequency, then prices it on classic and serverless Jobs. (3) Cost estimates for configured Databricks workloads (clusters, SQL warehouses, Model Serving, Vector Search, Foundation Model APIs, AI functions, Lakebase, Apps).",
- "tables": [
-  {
-   "identifier": "__FQ__.dcp_rate_card",
-   "description": [
-    "Rates the DCP calculator uses: one row per provider (DATABRICKS / AWS), sku, unit and region, with rate, status (GOVERNED, VALIDATED_OBSERVED, REFERENCE_ONLY, PENDING) and source. Databricks rows come from system.billing.account_prices (or list prices in test). Quote these; never change them."
-   ]
-  },
-  {
-   "identifier": "__FQ__.dcp_requests",
-   "description": [
-    "Named DCP use cases (one calculator request per use case; presets such as SEND_US01 and AI_RAG_MODEL_API). Use only to list use cases: SELECT use_case_id, use_case_name FROM dcp_requests. Never read request_json to calculate."
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_dbsql_rates",
-   "description": [
-    "DBU/hour rates per DBSQL warehouse type (classic/pro/serverless) and size; includes_compute flags whether VM is bundled."
-   ],
-   "column_configs": [
+  "title": "DCP Cost Estimator (one-notebook test)",
+  "description": "Databricks cost estimator for workload-level DCP Smart Estimates and explicitly configured Databricks products. Guides users through available categories, fact gathering, capability checks, and the supported calculation path. Reports method, pricing basis/status, assumptions, and pending coverage; no rate fallback.",
+  "tables": [
     {
-     "column_name": "dbu_per_hour",
-     "description": [
-      "DBU per hour for the SQL warehouse size."
-     ],
-     "synonyms": [
-      "dbu rate",
-      "dbus per hour"
-     ]
+      "identifier": "__FQ__.cost_estimator_functional_capabilities",
+      "description": [
+        "Cost Estimator Functional Capabilities: category discovery for DCP/Lakemeter and sizing. For vague requests list these choices and explicitly ask which estimate the user needs. For every DCP request offer the remaining DCP categories as an optional follow-up, respecting confirmed scope. Implementation is not validation."
+      ],
+      "column_configs": [
+        {
+          "column_name": "capability_kind",
+          "description": [
+            "WORKLOAD_ESTIMATE, PRODUCT_ESTIMATE or WORKLOAD_SIZING."
+          ],
+          "synonyms": [
+            "estimation path"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "category",
+          "description": [
+            "Available workload or product category; may occur under multiple estimate types or sizing paths."
+          ],
+          "synonyms": [
+            "cost categories",
+            "products",
+            "workloads"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "estimate_type",
+          "description": [
+            "DCP or Lakemeter. A method is selected by supported coverage, not input format."
+          ],
+          "synonyms": [
+            "estimator type",
+            "DCP",
+            "Lakemeter"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "implementation_state",
+          "description": [
+            "Function availability; not pricing or numerical validation."
+          ],
+          "synonyms": [
+            "availability"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "validation_state",
+          "description": [
+            "Current catalog validation evidence; UNTESTED is not validated."
+          ],
+          "synonyms": [
+            "validation status"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
     },
     {
-     "column_name": "includes_compute",
-     "description": [
-      "Whether VM/compute is bundled in the DBU price."
-     ],
-     "synonyms": [
-      "compute bundled",
-      "vm included"
-     ]
+      "identifier": "__FQ__.cost_estimator_workload_inputs",
+      "description": [
+        "Category-specific intake map for DCP and Lakemeter. Join ONLY capability_id AND estimate_type to functional capabilities; filter selected category/kind. Show input, what_to_provide, unit; REQUIRED first, conditional only as applicable, defaults separately. KNOWN is supplied by category. Never SELECT * or expose mapping metadata. Full DCP schema remains in dcp_engine_input_requirements."
+      ]
     },
     {
-     "column_name": "warehouse_size",
-     "description": [
-      "SQL warehouse size (e.g. Small, Medium, Large, 2X-Large)."
-     ],
-     "synonyms": [
-      "sql warehouse size",
-      "t-shirt size"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "identifier": "__FQ__.dcp_engine_input_requirements",
+      "description": [
+        "DCP Engine Input Requirements. After category selection filter by request_area and workload conditions, reuse known facts, and ask for missing applicable values in words, not a table alone. Include units/defaults and a labeled example if helpful. Batch/streaming use processing; Model API has recurring/one-time sections. dcp_check_inputs validates actual requests."
+      ],
+      "column_configs": [
+        {
+          "column_name": "engine",
+          "description": [
+            "One of the five DCP calculator engines. Model API has recurring and one-time request sections."
+          ],
+          "synonyms": [
+            "DCP engine",
+            "calculator area"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "input_role",
+          "description": [
+            "USER_INPUT, IDENTITY, PROVENANCE or CONTEXT_ONLY. Do not ask context-only fields as cost blockers."
+          ],
+          "synonyms": [
+            "field role"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "parameter_name",
+          "description": [
+            "Exact raw JSON field name, not necessarily a p_-prefixed SQL builder argument."
+          ],
+          "synonyms": [
+            "input field",
+            "parameter"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "request_area",
+          "description": [
+            "processing, sql, transfer, storage, model_endpoints or one_time_model_jobs. Batch and streaming both use processing."
+          ],
+          "synonyms": [
+            "input section"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "requirement",
+          "description": [
+            "Conditional requirements; SCENARIO_BOUND is needed to price that scenario. Check applies_when and use dcp_check_inputs for a concrete request."
+          ],
+          "synonyms": [
+            "required input"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
     },
     {
-     "column_name": "warehouse_type",
-     "description": [
-      "SQL warehouse type: classic, pro, serverless."
-     ],
-     "synonyms": [
-      "sql warehouse type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "identifier": "__FQ__.dcp_rate_card",
+      "description": [
+        "Rates the DCP calculator uses: one row per provider (DATABRICKS / AWS), sku, unit and region, with rate, status (GOVERNED, VALIDATED_OBSERVED, REFERENCE_ONLY, PENDING) and source. Databricks rows come from system.billing.account_prices (or list prices in test). Quote these; never change them."
+      ]
+    },
+    {
+      "identifier": "__FQ__.dcp_requests",
+      "description": [
+        "Named DCP use cases (one calculator request per use case; presets such as SEND_US01 and AI_RAG_MODEL_API). Use only to list use cases: SELECT use_case_id, use_case_name FROM dcp_requests. Never read request_json to calculate."
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_dbsql_rates",
+      "description": [
+        "DBU/hour rates per DBSQL warehouse type (classic/pro/serverless) and size; includes_compute flags whether VM is bundled."
+      ],
+      "column_configs": [
+        {
+          "column_name": "dbu_per_hour",
+          "description": [
+            "DBU per hour for the SQL warehouse size."
+          ],
+          "synonyms": [
+            "dbu rate",
+            "dbus per hour"
+          ]
+        },
+        {
+          "column_name": "includes_compute",
+          "description": [
+            "Whether VM/compute is bundled in the DBU price."
+          ],
+          "synonyms": [
+            "compute bundled",
+            "vm included"
+          ]
+        },
+        {
+          "column_name": "warehouse_size",
+          "description": [
+            "SQL warehouse size (e.g. Small, Medium, Large, 2X-Large)."
+          ],
+          "synonyms": [
+            "sql warehouse size",
+            "t-shirt size"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "warehouse_type",
+          "description": [
+            "SQL warehouse type: classic, pro, serverless."
+          ],
+          "synonyms": [
+            "sql warehouse type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_dbsql_warehouse_config",
+      "description": [
+        "DBSQL warehouse instance configs. IMPORTANT: 'warehouse_size' column holds the TYPE (classic/pro/serverless) and 'warehouse_type' holds the SIZE (e.g. 2X-Large)."
+      ],
+      "column_configs": [
+        {
+          "column_name": "driver_instance_type",
+          "description": [
+            "Driver VM instance type for the warehouse."
+          ],
+          "synonyms": [
+            "driver vm",
+            "driver node"
+          ]
+        },
+        {
+          "column_name": "warehouse_size",
+          "description": [
+            "NOTE: holds the warehouse TYPE (classic/pro/serverless) despite the name."
+          ],
+          "synonyms": [
+            "warehouse type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "warehouse_type",
+          "description": [
+            "NOTE: holds the warehouse SIZE (e.g. 2X-Large) despite the name."
+          ],
+          "synonyms": [
+            "warehouse size",
+            "t-shirt size"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "worker_count",
+          "description": [
+            "Number of worker nodes."
+          ],
+          "synonyms": [
+            "workers",
+            "num workers"
+          ]
+        },
+        {
+          "column_name": "worker_instance_type",
+          "description": [
+            "Worker VM instance type for the warehouse."
+          ],
+          "synonyms": [
+            "worker vm",
+            "worker node"
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_dbu_multipliers",
+      "description": [
+        "DBU multipliers (e.g. photon) by cloud and sku_type."
+      ],
+      "column_configs": [
+        {
+          "column_name": "feature",
+          "description": [
+            "Feature the multiplier applies to (e.g. photon)."
+          ],
+          "synonyms": [
+            "feature"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "multiplier",
+          "description": [
+            "DBU multiplier value."
+          ],
+          "synonyms": [
+            "dbu multiplier",
+            "factor"
+          ]
+        },
+        {
+          "column_name": "sku_type",
+          "description": [
+            "SKU type the multiplier applies to."
+          ],
+          "synonyms": [
+            "sku",
+            "product type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_dbu_price_card",
+      "description": [
+        "Price per DBU for every Lakemeter estimate and sizing function, per cloud, region, tier and product: price_per_dbu, status (GOVERNED from system.billing.account_prices, REFERENCE_ONLY from list prices in test, PENDING = no price), billing_sku, source, list_price_reference (comparison only). Quote status and source; never substitute."
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_dbu_rates",
+      "description": [
+        "Price per DBU (USD) by cloud, region, tier and SKU (sku_name)."
+      ],
+      "column_configs": [
+        {
+          "column_name": "cloud",
+          "description": [
+            "Cloud provider (AWS/AZURE/GCP)."
+          ],
+          "synonyms": [
+            "provider",
+            "csp"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "price_per_dbu",
+          "description": [
+            "Price per DBU in USD."
+          ],
+          "synonyms": [
+            "dbu price",
+            "dbu rate",
+            "rate",
+            "price",
+            "dollars per dbu"
+          ]
+        },
+        {
+          "column_name": "region",
+          "description": [
+            "Cloud region code (e.g. us-east-1)."
+          ],
+          "synonyms": [
+            "region"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "sku_name",
+          "description": [
+            "Billing SKU / product type, e.g. JOBS_COMPUTE, ALL_PURPOSE_COMPUTE, SQL_COMPUTE."
+          ],
+          "synonyms": [
+            "sku",
+            "product",
+            "product type",
+            "workload sku"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "tier",
+          "description": [
+            "Pricing tier: STANDARD, PREMIUM, ENTERPRISE."
+          ],
+          "synonyms": [
+            "pricing tier",
+            "plan",
+            "edition"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_fmapi_databricks_rates",
+      "description": [
+        "Foundation Model API (Databricks-hosted) token/hourly DBU rates per model; input_divisor, is_hourly."
+      ],
+      "column_configs": [
+        {
+          "column_name": "dbu_rate",
+          "description": [
+            "DBU rate per unit (per input_divisor tokens, or per hour)."
+          ],
+          "synonyms": [
+            "rate",
+            "dbu rate"
+          ]
+        },
+        {
+          "column_name": "input_divisor",
+          "description": [
+            "Token divisor the rate applies per (usually 1,000,000)."
+          ],
+          "synonyms": [
+            "token divisor",
+            "per tokens"
+          ]
+        },
+        {
+          "column_name": "is_hourly",
+          "description": [
+            "Whether the rate is hourly (provisioned) vs token-based."
+          ],
+          "synonyms": [
+            "hourly"
+          ]
+        },
+        {
+          "column_name": "model",
+          "description": [
+            "Databricks-hosted foundation model name (e.g. bge-large)."
+          ],
+          "synonyms": [
+            "foundation model",
+            "llm",
+            "embedding model",
+            "model name"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "rate_type",
+          "description": [
+            "Rate type: input_token, output_token, provisioned, etc."
+          ],
+          "synonyms": [
+            "token type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_fmapi_proprietary_rates",
+      "description": [
+        "Foundation Model API (proprietary provider models) DBU rates per provider/model/endpoint_type/context_length."
+      ],
+      "column_configs": [
+        {
+          "column_name": "context_length",
+          "description": [
+            "Context length bucket (e.g. all)."
+          ],
+          "synonyms": [
+            "context window"
+          ]
+        },
+        {
+          "column_name": "dbu_rate",
+          "description": [
+            "DBU rate per unit (per input_divisor tokens, or per hour)."
+          ],
+          "synonyms": [
+            "rate",
+            "dbu rate"
+          ]
+        },
+        {
+          "column_name": "endpoint_type",
+          "description": [
+            "Endpoint type (e.g. global)."
+          ],
+          "synonyms": [
+            "endpoint"
+          ]
+        },
+        {
+          "column_name": "model",
+          "description": [
+            "Proprietary model name (e.g. claude-haiku-4-5)."
+          ],
+          "synonyms": [
+            "foundation model",
+            "llm",
+            "model name"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "provider",
+          "description": [
+            "Model provider: anthropic, openai, google."
+          ],
+          "synonyms": [
+            "model provider",
+            "vendor"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "rate_type",
+          "description": [
+            "Rate type: input_token, output_token, batch_inference, etc."
+          ],
+          "synonyms": [
+            "token type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_instance_dbu_rates",
+      "description": [
+        "DBU/hour per VM instance type (classic/serverless compute sizing)."
+      ],
+      "column_configs": [
+        {
+          "column_name": "dbu_rate",
+          "description": [
+            "DBU per hour for this instance type."
+          ],
+          "synonyms": [
+            "dbu per hour",
+            "dbus per hour",
+            "dbu rate"
+          ]
+        },
+        {
+          "column_name": "instance_type",
+          "description": [
+            "VM / node instance type."
+          ],
+          "synonyms": [
+            "vm",
+            "node",
+            "node type",
+            "machine type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "memory_gb",
+          "description": [
+            "Memory in GB."
+          ],
+          "synonyms": [
+            "ram",
+            "memory"
+          ]
+        },
+        {
+          "column_name": "vcpus",
+          "description": [
+            "Virtual CPUs."
+          ],
+          "synonyms": [
+            "cores",
+            "cpus",
+            "vcpu"
+          ]
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_serverless_rates",
+      "description": [
+        "Serverless product DBU rates: product in model_serving (sizes cpu/gpu_*), vector_search (standard/storage_optimized)."
+      ],
+      "column_configs": [
+        {
+          "column_name": "dbu_rate",
+          "description": [
+            "DBU rate for the serverless product/size."
+          ],
+          "synonyms": [
+            "dbu rate",
+            "dbus per hour"
+          ]
+        },
+        {
+          "column_name": "product",
+          "description": [
+            "Serverless product: model_serving, vector_search."
+          ],
+          "synonyms": [
+            "serverless product"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "size_or_model",
+          "description": [
+            "GPU/CPU size for model serving, or vector search mode (standard/storage_optimized)."
+          ],
+          "synonyms": [
+            "gpu type",
+            "instance size",
+            "mode",
+            "vector search mode"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_sizing_node_families",
+      "description": [
+        "Node families size_cluster may choose from, per cloud and category (regex on instance_type). The smallest fitting node is chosen."
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_sizing_policy",
+      "description": [
+        "Worker limit and allowed node types for sized clusters per cloud, from the job cluster policy (or a default guardrail). Quote max_workers and source when a workload exceeds it."
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_sizing_profiles",
+      "description": [
+        "Workload sizing profiles (INGESTION, ETL, STREAMING, ML_TRAINING, ML_INFERENCE): memory and cores per GB, min/max workers, throughput per core-hour, cluster start minutes, node category, tips. Planning assumptions used by size_cluster."
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_sku_region_map",
+      "description": [
+        "Mapping between SKU region names and cloud region codes (e.g. US_EAST_N_VIRGINIA -> us-east-1)."
+      ],
+      "column_configs": [
+        {
+          "column_name": "region_code",
+          "description": [
+            "Cloud region code (e.g. us-east-1)."
+          ],
+          "synonyms": [
+            "region",
+            "cloud region"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "sku_region",
+          "description": [
+            "SKU region name (e.g. US_EAST_N_VIRGINIA)."
+          ],
+          "synonyms": [
+            "sku region"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
+    },
+    {
+      "identifier": "__FQ__.ref_vm_costs",
+      "description": [
+        "Cloud VM $/hour by cloud, region, instance_type, pricing_tier, payment_option."
+      ],
+      "column_configs": [
+        {
+          "column_name": "cloud",
+          "description": [
+            "Cloud provider."
+          ],
+          "synonyms": [
+            "provider",
+            "csp"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "cost_per_hour",
+          "description": [
+            "Cloud VM cost per hour in USD."
+          ],
+          "synonyms": [
+            "vm cost",
+            "vm price",
+            "hourly cost",
+            "compute cost",
+            "instance cost",
+            "dollars per hour"
+          ]
+        },
+        {
+          "column_name": "instance_type",
+          "description": [
+            "VM / node instance type (e.g. m5.xlarge)."
+          ],
+          "synonyms": [
+            "vm",
+            "node",
+            "node type",
+            "machine type",
+            "instance",
+            "ec2 type"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "payment_option",
+          "description": [
+            "Payment option (e.g. NA, 1yr, 3yr)."
+          ],
+          "synonyms": [
+            "commitment"
+          ]
+        },
+        {
+          "column_name": "pricing_tier",
+          "description": [
+            "VM pricing tier: on_demand, reserved, spot."
+          ],
+          "synonyms": [
+            "on demand",
+            "reserved",
+            "spot",
+            "purchase option"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        },
+        {
+          "column_name": "region",
+          "description": [
+            "Cloud region code (e.g. us-east-1)."
+          ],
+          "synonyms": [
+            "region"
+          ],
+          "enable_format_assistance": true,
+          "enable_entity_matching": true
+        }
+      ]
     }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_dbsql_warehouse_config",
-   "description": [
-    "DBSQL warehouse instance configs. IMPORTANT: 'warehouse_size' column holds the TYPE (classic/pro/serverless) and 'warehouse_type' holds the SIZE (e.g. 2X-Large)."
-   ],
-   "column_configs": [
+  ],
+  "text_instructions": [
+    "## Scope\nThis agent produces DCP cost estimates only: monthly and one-time totals from dcp_calc_totals. Do not run Lakemeter estimates, cluster sizing, line items, or details. If asked for something else, say it is out of scope.\n\n## Flow for every estimate request (pasted JSON or facts in prose)\n1. Validate the request. dcp_check_inputs and dcp_calc_totals both validate; dcp_calc_totals returns request_status NEEDS_INPUT with no figures when anything is missing. Pasted JSON: pass it unchanged as p_request. Prose facts: build it with dcp_request inside p_request.\n2. If request_status is NEEDS_INPUT (or dcp_check_inputs returns blocking rows): show no dollar figures. Turn each item in errors into a plain-language question, including whether each unconfirmed area is Included, Excluded, Unknown or Not Applicable. Wait for the answer.\n3. After the user answers: make the same call again with every earlier value plus the answers, following the next_step column returned by the function. Repeat until request_status is OK.\n4. Present figures only when request_status is OK.\n\n## Rules\n- Never decide an area state yourself. Silence, scope_excluded or notes do not count as Not Applicable; ask.\n- Never pass p_use_case, p_overrides or p_scenario as the string 'NULL'; omit unused parameters. Never pass JSON positionally.\n- Named presets (e.g. SEND_US01, FIN_CLAIMS_02): call dcp_calc_totals with p_use_case.\n- NULL or PENDING is never $0. Show pending items with their reason.\n\n## Presenting totals\nShow LOW / EXPECTED / HIGH recurring monthly and one-time USD exactly as returned (2 decimals), plus pricing source, confidence, defaults and assumptions applied, and pending items. Keep monthly and one-time separate."
+  ],
+  "sql_functions": [
+    "__FQ__.dcp_calc_totals",
+    "__FQ__.dcp_calc",
+    "__FQ__.dcp_calc_run",
+    "__FQ__.dcp_intake_questions",
+    "__FQ__.size_cluster",
+    "__FQ__.dcp_calc_line_items",
+    "__FQ__.estimate_lakebase_cost",
+    "__FQ__.estimate_fmapi_databricks_cost",
+    "__FQ__.estimate_model_serving_cost",
+    "__FQ__.estimate_jobs_classic_cost",
+    "__FQ__.estimator_catalog",
+    "__FQ__.estimate_all_purpose_classic_cost",
+    "__FQ__.estimate_fmapi_proprietary_cost",
+    "__FQ__.get_dbu_price_status",
+    "__FQ__.estimate_databricks_apps_cost",
+    "__FQ__.get_vm_cost_per_hour",
+    "__FQ__.estimate_dbsql_cost",
+    "__FQ__.estimate_sized_workload",
+    "__FQ__.dcp_calc_details",
+    "__FQ__.dcp_check",
+    "__FQ__.estimate_dlt_classic_cost",
+    "__FQ__.get_dbu_price",
+    "__FQ__.estimate_ai_classify_cost",
+    "__FQ__.dcp_check_inputs",
+    "__FQ__.estimate_vector_search_cost",
+    "__FQ__.dcp_request",
+    "__FQ__.estimate_ai_extract_cost",
+    "__FQ__.get_serverless_rate",
+    "__FQ__.estimate_serverless_compute_cost",
+    "__FQ__.estimate_ai_parse_cost"
+  ],
+  "example_question_sqls": [
     {
-     "column_name": "driver_instance_type",
-     "description": [
-      "Driver VM instance type for the warehouse."
-     ],
-     "synonyms": [
-      "driver vm",
-      "driver node"
-     ]
+      "question": [
+        "Give me cost estimations for this pasted workload JSON \u2014 always validate inputs first (step 1: call dcp_check_inputs)"
+      ],
+      "sql": [
+        "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30,\"evidence\":\"Calculator v4.0.2 new-workload template\"}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+      ]
     },
     {
-     "column_name": "warehouse_size",
-     "description": [
-      "NOTE: holds the warehouse TYPE (classic/pro/serverless) despite the name."
-     ],
-     "synonyms": [
-      "warehouse type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "question": [
+        "Follow-up after the user confirmed all area states and answered every missing input for a pasted JSON (e.g. model endpoints and one-time model jobs not applicable, each file read twice): calculate the totals"
+      ],
+      "sql": [
+        "SELECT scenario, recurring_monthly_usd, one_time_usd, databricks_usd, aws_usd, pending_items, pending_detail, area_states, confidence, request_status, rate_card_source FROM __FQ__.dcp_calc_totals(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":2},\"model_endpoints\":[],\"one_time_model_jobs\":[]}')"
+      ]
     },
     {
-     "column_name": "warehouse_type",
-     "description": [
-      "NOTE: holds the warehouse SIZE (e.g. 2X-Large) despite the name."
-     ],
-     "synonyms": [
-      "warehouse size",
-      "t-shirt size"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "question": [
+        "How do I estimate a recurring model API and a separate one-time indexing job?"
+      ],
+      "sql": [
+        "SELECT totals.scenario, totals.recurring_monthly_usd, totals.one_time_usd, totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'claude-sonnet-4-6', p_model_component_id => 'API-01', p_calls_per_day => 500, p_input_tokens_expected => 2000, p_output_tokens_expected => 400, p_one_time_model => 'gpt-5-4', p_one_time_component_id => 'INDEX-01', p_one_time_input_tokens_low => 1000000, p_one_time_input_tokens_high => 1000000, p_one_time_output_tokens_low => 50000, p_one_time_output_tokens_high => 50000, p_one_time_api_calls => 500, p_not_applicable_areas => 'processing,sql,transfer,storage')) AS totals"
+      ]
     },
     {
-     "column_name": "worker_count",
-     "description": [
-      "Number of worker nodes."
-     ],
-     "synonyms": [
-      "workers",
-      "num workers"
-     ]
+      "question": [
+        "List the required inputs for each DCP calculator engine."
+      ],
+      "sql": [
+        "SELECT inputs.engine, inputs.request_area, inputs.parameter_name, inputs.requirement, inputs.applies_when, inputs.default_value_json, inputs.unit, inputs.question FROM __FQ__.dcp_engine_input_requirements AS inputs ORDER BY inputs.sort_order"
+      ]
     },
     {
-     "column_name": "worker_instance_type",
-     "description": [
-      "Worker VM instance type for the warehouse."
-     ],
-     "synonyms": [
-      "worker vm",
-      "worker node"
-     ]
+      "question": [
+        "I need a cost estimate but I am not sure what kind. What can you estimate?"
+      ],
+      "sql": [
+        "SELECT c.category, c.capability_kind FROM __FQ__.cost_estimator_functional_capabilities AS c WHERE c.estimate_type = 'DCP' ORDER BY c.sort_order"
+      ]
+    },
+    {
+      "question": [
+        "What DBU rate does the DCP calculator use for SQL Pro, and what is its status?"
+      ],
+      "sql": [
+        "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%SQL_PRO%'"
+      ]
+    },
+    {
+      "question": [
+        "5 TB is retained in S3 with 400 files a day, none encrypted, each read twice. The other calculator areas are not applicable. Monthly cost?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 5, p_files_per_day => 400, p_encrypted_files_per_day => 0, p_s3_read_requests_per_file => 2, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+      ]
+    },
+    {
+      "question": [
+        "Which DCP use cases are loaded?"
+      ],
+      "sql": [
+        "SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests ORDER BY use_case_id"
+      ]
+    },
+    {
+      "question": [
+        "Two Kafka streaming jobs need second-level latency. SQL, transfer, storage and model work are not applicable. What do they cost?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_quantity => 2, p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+      ]
+    },
+    {
+      "question": [
+        "What if FIN_CLAIMS_02 runs its nightly rebuild 30 times a month?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02', p_overrides => '{\"processing[C02].runs_per_month\": 30}')"
+      ]
+    },
+    {
+      "question": [
+        "For DCP scheduled batch, I already know runtime is 2 hours. What else is required?"
+      ],
+      "sql": [
+        "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' AND i.parameter_name <> 'runtime_hours_expected' ORDER BY c.sort_order, i.input_order"
+      ]
+    },
+    {
+      "question": [
+        "What rates does the DCP calculator use?"
+      ],
+      "sql": [
+        "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card ORDER BY provider, sku"
+      ]
+    },
+    {
+      "question": [
+        "How do I estimate a scheduled workload together with a one-time indexing job?"
+      ],
+      "sql": [
+        "SELECT dcp_calc_totals.scenario, dcp_calc_totals.recurring_monthly_usd, dcp_calc_totals.one_time_usd, dcp_calc_totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 1, p_runs_per_month => 20, p_one_time_model => 'gpt-5-4', p_one_time_input_tokens_low => 1000000, p_one_time_input_tokens_high => 1000000, p_one_time_output_tokens_low => 0, p_one_time_output_tokens_high => 0, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints')) AS dcp_calc_totals"
+      ]
+    },
+    {
+      "question": [
+        "We copy 3 GB a day with DataSync on 20 days a month and migrate 1,200 GB once. Processing, SQL, storage and model work are not applicable. Costs?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 3, p_transfer_days_per_month => 20, p_initial_transfer_gb => 1200, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+      ]
+    },
+    {
+      "question": [
+        "What exact inputs does the DCP calculator still need before it can estimate a partially specified request?"
+      ],
+      "sql": [
+        "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2)) AS issues WHERE issues.blocking"
+      ]
+    },
+    {
+      "question": [
+        "A scheduled batch runs 30 times a month, 2 hours per run. SQL and storage are not applicable, transfer is excluded, and model work is unknown. Monthly cost?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,storage', p_excluded_areas => 'transfer', p_unknown_areas => 'model_endpoints,one_time_model_jobs'))"
+      ]
+    },
+    {
+      "question": [
+        "What if SEND_US01 keeps 12 TB of data?"
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 12}')"
+      ]
+    },
+    {
+      "question": [
+        "What inputs do you need for a DCP continuous streaming estimate?"
+      ],
+      "sql": [
+        "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'CONTINUOUS_STREAMING' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+      ]
+    },
+    {
+      "question": [
+        "I selected scheduled batch for a DCP estimate. What inputs do you need and what other categories can I estimate?"
+      ],
+      "sql": [
+        "SELECT i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY i.input_order"
+      ]
+    },
+    {
+      "question": [
+        "Which defaults should I confirm for a DCP scheduled batch estimate?"
+      ],
+      "sql": [
+        "SELECT i.parameter_name AS input, i.default_value AS proposed_default, i.question AS what_to_confirm FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'CONFIRM_DEFAULT' ORDER BY i.input_order"
+      ]
+    },
+    {
+      "question": [
+        "Give me the DCP estimate for FIN_CLAIMS_02."
+      ],
+      "sql": [
+        "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02')"
+      ]
+    },
+    {
+      "question": [
+        "For a processing-only scheduled batch, show the scenario totals and confirmed area states."
+      ],
+      "sql": [
+        "SELECT totals.scenario, totals.recurring_monthly_usd, totals.area_states, totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 20, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs')) AS totals"
+      ]
+    },
+    {
+      "question": [
+        "I need DCP scheduled batch and SQL reporting estimates. Which required inputs should I provide?"
+      ],
+      "sql": [
+        "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category IN ('SCHEDULED_BATCH', 'SQL_REPORTING') AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+      ]
+    },
+    {
+      "question": [
+        "What fields and defaults should I collect before estimating a batch workload?"
+      ],
+      "sql": [
+        "SELECT i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY i.input_order"
+      ]
     }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_dbu_multipliers",
-   "description": [
-    "DBU multipliers (e.g. photon) by cloud and sku_type."
-   ],
-   "column_configs": [
+  ],
+  "sample_questions": [
+    [
+      "Monthly cost of a Lakebase instance with 4 capacity units and 2 HA nodes?"
+    ],
+    [
+      "What does a Vector Search endpoint with 10 million vectors cost per month?"
+    ],
+    [
+      "Cost of 2 medium Databricks Apps running continuously?"
+    ],
+    [
+      "Which DCP use cases are loaded?"
+    ],
+    [
+      "What is pending for FIN_CLAIMS_02 and why?"
+    ],
+    [
+      "Cost of an ADVANCED DLT pipeline on 5 m5.xlarge workers running 2 hours daily."
+    ],
+    [
+      "FM API cost for 1 billion input tokens to Databricks claude or bge-large?"
+    ],
+    [
+      "What categories and products can I estimate?"
+    ],
+    [
+      "What rates does the DCP calculator use?"
+    ],
+    [
+      "Cost to extract fields from 500,000 invoices with ai_extract?"
+    ],
+    [
+      "Estimate a GPU model serving endpoint (gpu_small_t4) at concurrency 4."
+    ],
+    [
+      "Give me the DCP estimate for FIN_CLAIMS_02."
+    ],
+    [
+      "I have 10 GB of incremental ingestion daily. What cluster do I need and what will it cost?"
+    ],
+    [
+      "How much does a serverless SQL Medium warehouse cost for 160 hours a month?"
+    ],
+    [
+      "Estimate the monthly cost of a classic Jobs cluster: AWS us-east-1, m5.xlarge driver + 10 m5.xlarge workers, Photon, 1 hour/day."
+    ]
+  ],
+  "benchmarks": [
     {
-     "column_name": "feature",
-     "description": [
-      "Feature the multiplier applies to (e.g. photon)."
-     ],
-     "synonyms": [
-      "feature"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "id": "fb2a5e1ae3e84a59a68142df9c01e4ba",
+      "question": [
+        "A streaming workload needs seconds-level latency. What does it cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
     },
     {
-     "column_name": "multiplier",
-     "description": [
-      "DBU multiplier value."
-     ],
-     "synonyms": [
-      "dbu multiplier",
-      "factor"
-     ]
+      "id": "f6594990bf5145bbb61edba4bd80a079",
+      "question": [
+        "A scheduled batch has 2 hours per run but no runs per month. What is the cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it.Input check: request_status = NEEDS_INPUT, errors = runs_per_month MISSING. The agent must NOT give a cost; it asks how many times the batch runs per month (and gives no numbers)."
+      ]
     },
     {
-     "column_name": "sku_type",
-     "description": [
-      "SKU type the multiplier applies to."
-     ],
-     "synonyms": [
-      "sku",
-      "product type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+      "id": "f3ab6873bc72453fb56beaef5456fa85",
+      "question": [
+        "Give the core monthly range Low / Expected / High / Stress for SEND_US01."
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 146.76, 292.60, 531.78, 808.95. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "f26fac66088848cd840680f359482bb4",
+      "question": [
+        "What is the High all-in monthly cost for SEND_US01 at 10 TB?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.81. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "edd7c84cf34b4b49b4f1cc39a562bfb7",
+      "question": [
+        "What is the confidence for SEND_US01 and why?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "ea8a72f55e3440c38131ca0d6e3c5ade",
+      "question": [
+        "What are the monthly Low / Expected / High and one-time costs for the AI_RAG_MODEL_API preset?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'AI_RAG_MODEL_API')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 104.69, 475.60, 846.51, 509.29, 551.79. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "df1cd5eec28549c1a863a93067334855",
+      "question": [
+        "A scheduled batch runs 30 times a month, 2 hours per run, and no DBU rate is given. What is the Expected monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "c72145ce03174a92b77a2f97f75ea998",
+      "question": [
+        "SEND daily volume is entered as -1 GB. What happens?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01', p_overrides => '{\"transfer.daily_gb_expected\": -1}')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Input check: request_status = NEEDS_INPUT with INVALID_VALUE (transfer.daily_gb_expected must be a non-negative number, got -1). The agent must NOT give numbers; it says -1 GB is invalid and asks for the correct daily volume."
+      ]
+    },
+    {
+      "id": "b4e921efb561487f8db32613e3868030",
+      "question": [
+        "A streaming job has no DBU rate and no run details. What is the Expected monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "5be589e2293b4c06aa96be78d772f1e3",
+      "question": [
+        "Why is the Low backfill cost $0.00 for SEND?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "4dd8131c1ea74a7ea3c3bcd0570112ef",
+      "question": [
+        "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration. What are the costs?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "4dad97c8c6cd4d00889be0484872b29c",
+      "question": [
+        "100 calls a day on gpt-5-4, 1,000 input and 100 output tokens per call. What is the Expected monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 100, p_input_tokens_expected => 1000, p_output_tokens_expected => 100, p_not_applicable_areas => 'processing,sql,transfer,storage,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, storage, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "337a49d214384de2ac665066330a94b9",
+      "question": [
+        "SEND says each file is read 3 times. What is the new High all-in monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"s3_read_requests_per_file\": 3}')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.83. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "262e1566e66d4597baf2da3c828ffcb3",
+      "question": [
+        "What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 9,278.76, 125.00. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "1e4d6abfb7f44d7c9a1609311a5c88a4",
+      "question": [
+        "Which SEND_US01 costs are pending?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "184df023dee74cf4bfb0ed6bcdbb66a9",
+      "question": [
+        "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. What is the Expected monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "17fccc5e0a254839a67839fe78c16696",
+      "question": [
+        "What is the High core monthly estimate for SEND_US01?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 531.78. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "17c840184f4344dba57a7601f2f62871",
+      "question": [
+        "SQL reporting for 25 concurrent users, 22 working days. What is the High monthly cost?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 25, p_working_days_per_month => 22, p_not_applicable_areas => 'processing,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+      ]
+    },
+    {
+      "id": "13002befb3d14f3581e8998cac75c52b",
+      "question": [
+        "If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}')"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 716.81, 8,701.76, 100.00. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "127efeaa5df14d49b458fa28fee5db8c",
+      "question": [
+        "What rate is used for Databricks Jobs Serverless and where does it come from?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%JOBS_SERVERLESS%'"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 0.35. At other rate sources the figures differ; grade against the answer SQL's result."
+      ]
+    },
+    {
+      "id": "01f1d6ee8ab711898293cc145ca9d697",
+      "question": [
+        "provide a cost estimate for 12 GB a day through DataSync"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT issues.section, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_daily_gb_expected => 12)) AS issues WHERE issues.blocking"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "The answer must give no dollar figures and must not call dcp_calc_totals; it asks the user to confirm the unconfirmed calculator areas and any other blocking inputs."
+      ]
+    },
+    {
+      "id": "01f1d6e17dc61ca8991b2e968fd678c7",
+      "question": [
+        "How much will a classic Jobs cluster cost me per month?"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'JOBS_CLASSIC' AND c.estimate_type = 'Lakemeter' AND c.capability_kind = 'PRODUCT_ESTIMATE' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "No inputs are given, so the agent must not run estimate_jobs_classic_cost or show any dollar figures or cost table; it asks in prose for the required inputs."
+      ]
+    },
+    {
+      "id": "01f1d4809f4018909f23fd5760f9c9f7",
+      "question": [
+        "Provide the dcp estimate for the below usecase\n",
+        "{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}"
+      ],
+      "answer": [
+        {
+          "format": "SQL",
+          "content": [
+            "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+          ]
+        }
+      ],
+      "evaluation_note": [
+        "The response must ask for the missing inputs and must not present any dollar estimate."
+      ]
     }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_dbu_rates",
-   "description": [
-    "Price per DBU (USD) by cloud, region, tier and SKU (sku_name)."
-   ],
-   "column_configs": [
-    {
-     "column_name": "cloud",
-     "description": [
-      "Cloud provider (AWS/AZURE/GCP)."
-     ],
-     "synonyms": [
-      "provider",
-      "csp"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+  ],
+  "serialized_space": {
+    "version": 2,
+    "config": {
+      "sample_questions": [
+        {
+          "id": "0e69f68154ad46e2826065264cab0d9c",
+          "question": [
+            "Monthly cost of a Lakebase instance with 4 capacity units and 2 HA nodes?"
+          ]
+        },
+        {
+          "id": "1f289ccf6f9540259e33bd6f8c31b782",
+          "question": [
+            "What does a Vector Search endpoint with 10 million vectors cost per month?"
+          ]
+        },
+        {
+          "id": "20e1f948ea31483ba052049d4ed8777a",
+          "question": [
+            "Cost of 2 medium Databricks Apps running continuously?"
+          ]
+        },
+        {
+          "id": "3416dcefa5314377b5a06f3664a75876",
+          "question": [
+            "Which DCP use cases are loaded?"
+          ]
+        },
+        {
+          "id": "38ee76d2ab8b466f8deee03ab8a81ff6",
+          "question": [
+            "What is pending for FIN_CLAIMS_02 and why?"
+          ]
+        },
+        {
+          "id": "3a32178d3f2a4106a9c0f8d457606567",
+          "question": [
+            "Cost of an ADVANCED DLT pipeline on 5 m5.xlarge workers running 2 hours daily."
+          ]
+        },
+        {
+          "id": "4abd03145b3440e5922790e85375ad23",
+          "question": [
+            "FM API cost for 1 billion input tokens to Databricks claude or bge-large?"
+          ]
+        },
+        {
+          "id": "6d41a13b664d4f55a1797a13baeca978",
+          "question": [
+            "What categories and products can I estimate?"
+          ]
+        },
+        {
+          "id": "977eee34ffa54717aa135dbe13758ed8",
+          "question": [
+            "What rates does the DCP calculator use?"
+          ]
+        },
+        {
+          "id": "9cf600915f544f94b7de1248b7ca5c68",
+          "question": [
+            "Cost to extract fields from 500,000 invoices with ai_extract?"
+          ]
+        },
+        {
+          "id": "9f028662fde44f7eb67e688acd25ad76",
+          "question": [
+            "Estimate a GPU model serving endpoint (gpu_small_t4) at concurrency 4."
+          ]
+        },
+        {
+          "id": "9f8df80f06184f81ba0d2a529b2b8fb9",
+          "question": [
+            "Give me the DCP estimate for FIN_CLAIMS_02."
+          ]
+        },
+        {
+          "id": "c278c49e45e3423c94e5585ade4ac48c",
+          "question": [
+            "I have 10 GB of incremental ingestion daily. What cluster do I need and what will it cost?"
+          ]
+        },
+        {
+          "id": "d59cc55203d34ce4a328ac7cd55a1da9",
+          "question": [
+            "How much does a serverless SQL Medium warehouse cost for 160 hours a month?"
+          ]
+        },
+        {
+          "id": "f75e24df1c1e410ea26e86a41a83299d",
+          "question": [
+            "Estimate the monthly cost of a classic Jobs cluster: AWS us-east-1, m5.xlarge driver + 10 m5.xlarge workers, Photon, 1 hour/day."
+          ]
+        }
+      ]
     },
-    {
-     "column_name": "price_per_dbu",
-     "description": [
-      "Price per DBU in USD."
-     ],
-     "synonyms": [
-      "dbu price",
-      "dbu rate",
-      "rate",
-      "price",
-      "dollars per dbu"
-     ]
+    "data_sources": {
+      "tables": [
+        {
+          "identifier": "__FQ__.cost_estimator_functional_capabilities",
+          "description": [
+            "Cost Estimator Functional Capabilities: category discovery for DCP/Lakemeter and sizing. For vague requests list these choices and explicitly ask which estimate the user needs. For every DCP request offer the remaining DCP categories as an optional follow-up, respecting confirmed scope. Implementation is not validation."
+          ],
+          "column_configs": [
+            {
+              "column_name": "capability_kind",
+              "description": [
+                "WORKLOAD_ESTIMATE, PRODUCT_ESTIMATE or WORKLOAD_SIZING."
+              ],
+              "synonyms": [
+                "estimation path"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "category",
+              "description": [
+                "Available workload or product category; may occur under multiple estimate types or sizing paths."
+              ],
+              "synonyms": [
+                "cost categories",
+                "products",
+                "workloads"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "estimate_type",
+              "description": [
+                "DCP or Lakemeter. A method is selected by supported coverage, not input format."
+              ],
+              "synonyms": [
+                "estimator type",
+                "DCP",
+                "Lakemeter"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "implementation_state",
+              "description": [
+                "Function availability; not pricing or numerical validation."
+              ],
+              "synonyms": [
+                "availability"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "validation_state",
+              "description": [
+                "Current catalog validation evidence; UNTESTED is not validated."
+              ],
+              "synonyms": [
+                "validation status"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.cost_estimator_workload_inputs",
+          "description": [
+            "Category-specific intake map for DCP and Lakemeter. Join ONLY capability_id AND estimate_type to functional capabilities; filter selected category/kind. Show input, what_to_provide, unit; REQUIRED first, conditional only as applicable, defaults separately. KNOWN is supplied by category. Never SELECT * or expose mapping metadata. Full DCP schema remains in dcp_engine_input_requirements."
+          ]
+        },
+        {
+          "identifier": "__FQ__.dcp_engine_input_requirements",
+          "description": [
+            "DCP Engine Input Requirements. After category selection filter by request_area and workload conditions, reuse known facts, and ask for missing applicable values in words, not a table alone. Include units/defaults and a labeled example if helpful. Batch/streaming use processing; Model API has recurring/one-time sections. dcp_check_inputs validates actual requests."
+          ],
+          "column_configs": [
+            {
+              "column_name": "engine",
+              "description": [
+                "One of the five DCP calculator engines. Model API has recurring and one-time request sections."
+              ],
+              "synonyms": [
+                "DCP engine",
+                "calculator area"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "input_role",
+              "description": [
+                "USER_INPUT, IDENTITY, PROVENANCE or CONTEXT_ONLY. Do not ask context-only fields as cost blockers."
+              ],
+              "synonyms": [
+                "field role"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "parameter_name",
+              "description": [
+                "Exact raw JSON field name, not necessarily a p_-prefixed SQL builder argument."
+              ],
+              "synonyms": [
+                "input field",
+                "parameter"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "request_area",
+              "description": [
+                "processing, sql, transfer, storage, model_endpoints or one_time_model_jobs. Batch and streaming both use processing."
+              ],
+              "synonyms": [
+                "input section"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "requirement",
+              "description": [
+                "Conditional requirements; SCENARIO_BOUND is needed to price that scenario. Check applies_when and use dcp_check_inputs for a concrete request."
+              ],
+              "synonyms": [
+                "required input"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.dcp_rate_card",
+          "description": [
+            "Rates the DCP calculator uses: one row per provider (DATABRICKS / AWS), sku, unit and region, with rate, status (GOVERNED, VALIDATED_OBSERVED, REFERENCE_ONLY, PENDING) and source. Databricks rows come from system.billing.account_prices (or list prices in test). Quote these; never change them."
+          ]
+        },
+        {
+          "identifier": "__FQ__.dcp_requests",
+          "description": [
+            "Named DCP use cases (one calculator request per use case; presets such as SEND_US01 and AI_RAG_MODEL_API). Use only to list use cases: SELECT use_case_id, use_case_name FROM dcp_requests. Never read request_json to calculate."
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_dbsql_rates",
+          "description": [
+            "DBU/hour rates per DBSQL warehouse type (classic/pro/serverless) and size; includes_compute flags whether VM is bundled."
+          ],
+          "column_configs": [
+            {
+              "column_name": "dbu_per_hour",
+              "description": [
+                "DBU per hour for the SQL warehouse size."
+              ],
+              "synonyms": [
+                "dbu rate",
+                "dbus per hour"
+              ]
+            },
+            {
+              "column_name": "includes_compute",
+              "description": [
+                "Whether VM/compute is bundled in the DBU price."
+              ],
+              "synonyms": [
+                "compute bundled",
+                "vm included"
+              ]
+            },
+            {
+              "column_name": "warehouse_size",
+              "description": [
+                "SQL warehouse size (e.g. Small, Medium, Large, 2X-Large)."
+              ],
+              "synonyms": [
+                "sql warehouse size",
+                "t-shirt size"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "warehouse_type",
+              "description": [
+                "SQL warehouse type: classic, pro, serverless."
+              ],
+              "synonyms": [
+                "sql warehouse type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_dbsql_warehouse_config",
+          "description": [
+            "DBSQL warehouse instance configs. IMPORTANT: 'warehouse_size' column holds the TYPE (classic/pro/serverless) and 'warehouse_type' holds the SIZE (e.g. 2X-Large)."
+          ],
+          "column_configs": [
+            {
+              "column_name": "driver_instance_type",
+              "description": [
+                "Driver VM instance type for the warehouse."
+              ],
+              "synonyms": [
+                "driver vm",
+                "driver node"
+              ]
+            },
+            {
+              "column_name": "warehouse_size",
+              "description": [
+                "NOTE: holds the warehouse TYPE (classic/pro/serverless) despite the name."
+              ],
+              "synonyms": [
+                "warehouse type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "warehouse_type",
+              "description": [
+                "NOTE: holds the warehouse SIZE (e.g. 2X-Large) despite the name."
+              ],
+              "synonyms": [
+                "warehouse size",
+                "t-shirt size"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "worker_count",
+              "description": [
+                "Number of worker nodes."
+              ],
+              "synonyms": [
+                "workers",
+                "num workers"
+              ]
+            },
+            {
+              "column_name": "worker_instance_type",
+              "description": [
+                "Worker VM instance type for the warehouse."
+              ],
+              "synonyms": [
+                "worker vm",
+                "worker node"
+              ]
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_dbu_multipliers",
+          "description": [
+            "DBU multipliers (e.g. photon) by cloud and sku_type."
+          ],
+          "column_configs": [
+            {
+              "column_name": "feature",
+              "description": [
+                "Feature the multiplier applies to (e.g. photon)."
+              ],
+              "synonyms": [
+                "feature"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "multiplier",
+              "description": [
+                "DBU multiplier value."
+              ],
+              "synonyms": [
+                "dbu multiplier",
+                "factor"
+              ]
+            },
+            {
+              "column_name": "sku_type",
+              "description": [
+                "SKU type the multiplier applies to."
+              ],
+              "synonyms": [
+                "sku",
+                "product type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_dbu_price_card",
+          "description": [
+            "Price per DBU for every Lakemeter estimate and sizing function, per cloud, region, tier and product: price_per_dbu, status (GOVERNED from system.billing.account_prices, REFERENCE_ONLY from list prices in test, PENDING = no price), billing_sku, source, list_price_reference (comparison only). Quote status and source; never substitute."
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_dbu_rates",
+          "description": [
+            "Price per DBU (USD) by cloud, region, tier and SKU (sku_name)."
+          ],
+          "column_configs": [
+            {
+              "column_name": "cloud",
+              "description": [
+                "Cloud provider (AWS/AZURE/GCP)."
+              ],
+              "synonyms": [
+                "provider",
+                "csp"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "price_per_dbu",
+              "description": [
+                "Price per DBU in USD."
+              ],
+              "synonyms": [
+                "dbu price",
+                "dbu rate",
+                "rate",
+                "price",
+                "dollars per dbu"
+              ]
+            },
+            {
+              "column_name": "region",
+              "description": [
+                "Cloud region code (e.g. us-east-1)."
+              ],
+              "synonyms": [
+                "region"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "sku_name",
+              "description": [
+                "Billing SKU / product type, e.g. JOBS_COMPUTE, ALL_PURPOSE_COMPUTE, SQL_COMPUTE."
+              ],
+              "synonyms": [
+                "sku",
+                "product",
+                "product type",
+                "workload sku"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "tier",
+              "description": [
+                "Pricing tier: STANDARD, PREMIUM, ENTERPRISE."
+              ],
+              "synonyms": [
+                "pricing tier",
+                "plan",
+                "edition"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_fmapi_databricks_rates",
+          "description": [
+            "Foundation Model API (Databricks-hosted) token/hourly DBU rates per model; input_divisor, is_hourly."
+          ],
+          "column_configs": [
+            {
+              "column_name": "dbu_rate",
+              "description": [
+                "DBU rate per unit (per input_divisor tokens, or per hour)."
+              ],
+              "synonyms": [
+                "rate",
+                "dbu rate"
+              ]
+            },
+            {
+              "column_name": "input_divisor",
+              "description": [
+                "Token divisor the rate applies per (usually 1,000,000)."
+              ],
+              "synonyms": [
+                "token divisor",
+                "per tokens"
+              ]
+            },
+            {
+              "column_name": "is_hourly",
+              "description": [
+                "Whether the rate is hourly (provisioned) vs token-based."
+              ],
+              "synonyms": [
+                "hourly"
+              ]
+            },
+            {
+              "column_name": "model",
+              "description": [
+                "Databricks-hosted foundation model name (e.g. bge-large)."
+              ],
+              "synonyms": [
+                "foundation model",
+                "llm",
+                "embedding model",
+                "model name"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "rate_type",
+              "description": [
+                "Rate type: input_token, output_token, provisioned, etc."
+              ],
+              "synonyms": [
+                "token type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_fmapi_proprietary_rates",
+          "description": [
+            "Foundation Model API (proprietary provider models) DBU rates per provider/model/endpoint_type/context_length."
+          ],
+          "column_configs": [
+            {
+              "column_name": "context_length",
+              "description": [
+                "Context length bucket (e.g. all)."
+              ],
+              "synonyms": [
+                "context window"
+              ]
+            },
+            {
+              "column_name": "dbu_rate",
+              "description": [
+                "DBU rate per unit (per input_divisor tokens, or per hour)."
+              ],
+              "synonyms": [
+                "rate",
+                "dbu rate"
+              ]
+            },
+            {
+              "column_name": "endpoint_type",
+              "description": [
+                "Endpoint type (e.g. global)."
+              ],
+              "synonyms": [
+                "endpoint"
+              ]
+            },
+            {
+              "column_name": "model",
+              "description": [
+                "Proprietary model name (e.g. claude-haiku-4-5)."
+              ],
+              "synonyms": [
+                "foundation model",
+                "llm",
+                "model name"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "provider",
+              "description": [
+                "Model provider: anthropic, openai, google."
+              ],
+              "synonyms": [
+                "model provider",
+                "vendor"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "rate_type",
+              "description": [
+                "Rate type: input_token, output_token, batch_inference, etc."
+              ],
+              "synonyms": [
+                "token type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_instance_dbu_rates",
+          "description": [
+            "DBU/hour per VM instance type (classic/serverless compute sizing)."
+          ],
+          "column_configs": [
+            {
+              "column_name": "dbu_rate",
+              "description": [
+                "DBU per hour for this instance type."
+              ],
+              "synonyms": [
+                "dbu per hour",
+                "dbus per hour",
+                "dbu rate"
+              ]
+            },
+            {
+              "column_name": "instance_type",
+              "description": [
+                "VM / node instance type."
+              ],
+              "synonyms": [
+                "vm",
+                "node",
+                "node type",
+                "machine type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "memory_gb",
+              "description": [
+                "Memory in GB."
+              ],
+              "synonyms": [
+                "ram",
+                "memory"
+              ]
+            },
+            {
+              "column_name": "vcpus",
+              "description": [
+                "Virtual CPUs."
+              ],
+              "synonyms": [
+                "cores",
+                "cpus",
+                "vcpu"
+              ]
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_serverless_rates",
+          "description": [
+            "Serverless product DBU rates: product in model_serving (sizes cpu/gpu_*), vector_search (standard/storage_optimized)."
+          ],
+          "column_configs": [
+            {
+              "column_name": "dbu_rate",
+              "description": [
+                "DBU rate for the serverless product/size."
+              ],
+              "synonyms": [
+                "dbu rate",
+                "dbus per hour"
+              ]
+            },
+            {
+              "column_name": "product",
+              "description": [
+                "Serverless product: model_serving, vector_search."
+              ],
+              "synonyms": [
+                "serverless product"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "size_or_model",
+              "description": [
+                "GPU/CPU size for model serving, or vector search mode (standard/storage_optimized)."
+              ],
+              "synonyms": [
+                "gpu type",
+                "instance size",
+                "mode",
+                "vector search mode"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_sizing_node_families",
+          "description": [
+            "Node families size_cluster may choose from, per cloud and category (regex on instance_type). The smallest fitting node is chosen."
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_sizing_policy",
+          "description": [
+            "Worker limit and allowed node types for sized clusters per cloud, from the job cluster policy (or a default guardrail). Quote max_workers and source when a workload exceeds it."
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_sizing_profiles",
+          "description": [
+            "Workload sizing profiles (INGESTION, ETL, STREAMING, ML_TRAINING, ML_INFERENCE): memory and cores per GB, min/max workers, throughput per core-hour, cluster start minutes, node category, tips. Planning assumptions used by size_cluster."
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_sku_region_map",
+          "description": [
+            "Mapping between SKU region names and cloud region codes (e.g. US_EAST_N_VIRGINIA -> us-east-1)."
+          ],
+          "column_configs": [
+            {
+              "column_name": "region_code",
+              "description": [
+                "Cloud region code (e.g. us-east-1)."
+              ],
+              "synonyms": [
+                "region",
+                "cloud region"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "sku_region",
+              "description": [
+                "SKU region name (e.g. US_EAST_N_VIRGINIA)."
+              ],
+              "synonyms": [
+                "sku region"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        },
+        {
+          "identifier": "__FQ__.ref_vm_costs",
+          "description": [
+            "Cloud VM $/hour by cloud, region, instance_type, pricing_tier, payment_option."
+          ],
+          "column_configs": [
+            {
+              "column_name": "cloud",
+              "description": [
+                "Cloud provider."
+              ],
+              "synonyms": [
+                "provider",
+                "csp"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "cost_per_hour",
+              "description": [
+                "Cloud VM cost per hour in USD."
+              ],
+              "synonyms": [
+                "vm cost",
+                "vm price",
+                "hourly cost",
+                "compute cost",
+                "instance cost",
+                "dollars per hour"
+              ]
+            },
+            {
+              "column_name": "instance_type",
+              "description": [
+                "VM / node instance type (e.g. m5.xlarge)."
+              ],
+              "synonyms": [
+                "vm",
+                "node",
+                "node type",
+                "machine type",
+                "instance",
+                "ec2 type"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "payment_option",
+              "description": [
+                "Payment option (e.g. NA, 1yr, 3yr)."
+              ],
+              "synonyms": [
+                "commitment"
+              ]
+            },
+            {
+              "column_name": "pricing_tier",
+              "description": [
+                "VM pricing tier: on_demand, reserved, spot."
+              ],
+              "synonyms": [
+                "on demand",
+                "reserved",
+                "spot",
+                "purchase option"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            },
+            {
+              "column_name": "region",
+              "description": [
+                "Cloud region code (e.g. us-east-1)."
+              ],
+              "synonyms": [
+                "region"
+              ],
+              "enable_format_assistance": true,
+              "enable_entity_matching": true
+            }
+          ]
+        }
+      ]
     },
-    {
-     "column_name": "region",
-     "description": [
-      "Cloud region code (e.g. us-east-1)."
-     ],
-     "synonyms": [
-      "region"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+    "instructions": {
+      "text_instructions": [
+        {
+          "id": "8cc94fd9e68c4459aef182a511000cea",
+          "content": [
+            "## Scope\n",
+            "This agent produces DCP cost estimates only: monthly and one-time totals from dcp_calc_totals. Do not run Lakemeter estimates, cluster sizing, line items, or details. If asked for something else, say it is out of scope.\n",
+            "\n",
+            "## Flow for every estimate request (pasted JSON or facts in prose)\n",
+            "1. Validate the request. dcp_check_inputs and dcp_calc_totals both validate; dcp_calc_totals returns request_status NEEDS_INPUT with no figures when anything is missing. Pasted JSON: pass it unchanged as p_request. Prose facts: build it with dcp_request inside p_request.\n",
+            "2. If request_status is NEEDS_INPUT (or dcp_check_inputs returns blocking rows): show no dollar figures. Turn each item in errors into a plain-language question, including whether each unconfirmed area is Included, Excluded, Unknown or Not Applicable. Wait for the answer.\n",
+            "3. After the user answers: make the same call again with every earlier value plus the answers, following the next_step column returned by the function. Repeat until request_status is OK.\n",
+            "4. Present figures only when request_status is OK.\n",
+            "\n",
+            "## Rules\n",
+            "- Never decide an area state yourself. Silence, scope_excluded or notes do not count as Not Applicable; ask.\n",
+            "- Never pass p_use_case, p_overrides or p_scenario as the string 'NULL'; omit unused parameters. Never pass JSON positionally.\n",
+            "- Named presets (e.g. SEND_US01, FIN_CLAIMS_02): call dcp_calc_totals with p_use_case.\n",
+            "- NULL or PENDING is never $0. Show pending items with their reason.\n",
+            "\n",
+            "## Presenting totals\n",
+            "Show LOW / EXPECTED / HIGH recurring monthly and one-time USD exactly as returned (2 decimals), plus pricing source, confidence, defaults and assumptions applied, and pending items. Keep monthly and one-time separate."
+          ]
+        }
+      ],
+      "example_question_sqls": [
+        {
+          "id": "01f1d4809f2c1f9a987e50e39be898e7",
+          "question": [
+            "Give me cost estimations for this pasted workload JSON \u2014 always validate inputs first (step 1: call dcp_check_inputs)"
+          ],
+          "sql": [
+            "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30,\"evidence\":\"Calculator v4.0.2 new-workload template\"}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+          ]
+        },
+        {
+          "id": "01f1d6ee8ab51ba395378f04cffc59db",
+          "question": [
+            "Follow-up after the user confirmed all area states and answered every missing input for a pasted JSON (e.g. model endpoints and one-time model jobs not applicable, each file read twice): calculate the totals"
+          ],
+          "sql": [
+            "SELECT scenario, recurring_monthly_usd, one_time_usd, databricks_usd, aws_usd, pending_items, pending_detail, area_states, confidence, request_status, rate_card_source FROM __FQ__.dcp_calc_totals(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":2},\"model_endpoints\":[],\"one_time_model_jobs\":[]}')"
+          ]
+        },
+        {
+          "id": "03a81aae777745ed8dc7e1781cf1520d",
+          "question": [
+            "How do I estimate a recurring model API and a separate one-time indexing job?"
+          ],
+          "sql": [
+            "SELECT totals.scenario, totals.recurring_monthly_usd, totals.one_time_usd, totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'claude-sonnet-4-6', p_model_component_id => 'API-01', p_calls_per_day => 500, p_input_tokens_expected => 2000, p_output_tokens_expected => 400, p_one_time_model => 'gpt-5-4', p_one_time_component_id => 'INDEX-01', p_one_time_input_tokens_low => 1000000, p_one_time_input_tokens_high => 1000000, p_one_time_output_tokens_low => 50000, p_one_time_output_tokens_high => 50000, p_one_time_api_calls => 500, p_not_applicable_areas => 'processing,sql,transfer,storage')) AS totals"
+          ]
+        },
+        {
+          "id": "06849711483546bca90aac541b836050",
+          "question": [
+            "List the required inputs for each DCP calculator engine."
+          ],
+          "sql": [
+            "SELECT inputs.engine, inputs.request_area, inputs.parameter_name, inputs.requirement, inputs.applies_when, inputs.default_value_json, inputs.unit, inputs.question FROM __FQ__.dcp_engine_input_requirements AS inputs ORDER BY inputs.sort_order"
+          ]
+        },
+        {
+          "id": "087508b6fbf748c291f4773b2c93117d",
+          "question": [
+            "I need a cost estimate but I am not sure what kind. What can you estimate?"
+          ],
+          "sql": [
+            "SELECT c.category, c.capability_kind FROM __FQ__.cost_estimator_functional_capabilities AS c WHERE c.estimate_type = 'DCP' ORDER BY c.sort_order"
+          ]
+        },
+        {
+          "id": "286e5e97074544128a3f40a99d776ded",
+          "question": [
+            "What DBU rate does the DCP calculator use for SQL Pro, and what is its status?"
+          ],
+          "sql": [
+            "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%SQL_PRO%'"
+          ]
+        },
+        {
+          "id": "2bdbe191ca6049eea961b198cb9dcb45",
+          "question": [
+            "5 TB is retained in S3 with 400 files a day, none encrypted, each read twice. The other calculator areas are not applicable. Monthly cost?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 5, p_files_per_day => 400, p_encrypted_files_per_day => 0, p_s3_read_requests_per_file => 2, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+          ]
+        },
+        {
+          "id": "2fed66faae364226b287b83f3c9c1e8e",
+          "question": [
+            "Which DCP use cases are loaded?"
+          ],
+          "sql": [
+            "SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests ORDER BY use_case_id"
+          ]
+        },
+        {
+          "id": "390b3ca1d6f34e5490bd401fa66ce7cb",
+          "question": [
+            "Two Kafka streaming jobs need second-level latency. SQL, transfer, storage and model work are not applicable. What do they cost?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_quantity => 2, p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        },
+        {
+          "id": "3be409fe9ac647bbb20f5f4bfa1b9bd7",
+          "question": [
+            "What if FIN_CLAIMS_02 runs its nightly rebuild 30 times a month?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02', p_overrides => '{\"processing[C02].runs_per_month\": 30}')"
+          ]
+        },
+        {
+          "id": "3d67988db87940d3a9acbfae16fa4895",
+          "question": [
+            "For DCP scheduled batch, I already know runtime is 2 hours. What else is required?"
+          ],
+          "sql": [
+            "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' AND i.parameter_name <> 'runtime_hours_expected' ORDER BY c.sort_order, i.input_order"
+          ]
+        },
+        {
+          "id": "4f13d1c8205c48b19d7f6a60376c7312",
+          "question": [
+            "What rates does the DCP calculator use?"
+          ],
+          "sql": [
+            "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card ORDER BY provider, sku"
+          ]
+        },
+        {
+          "id": "6662359d68ac4c6c9c3efef55461c9d4",
+          "question": [
+            "How do I estimate a scheduled workload together with a one-time indexing job?"
+          ],
+          "sql": [
+            "SELECT dcp_calc_totals.scenario, dcp_calc_totals.recurring_monthly_usd, dcp_calc_totals.one_time_usd, dcp_calc_totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 1, p_runs_per_month => 20, p_one_time_model => 'gpt-5-4', p_one_time_input_tokens_low => 1000000, p_one_time_input_tokens_high => 1000000, p_one_time_output_tokens_low => 0, p_one_time_output_tokens_high => 0, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints')) AS dcp_calc_totals"
+          ]
+        },
+        {
+          "id": "72ff1f98bdf3434484d18578229fde4d",
+          "question": [
+            "We copy 3 GB a day with DataSync on 20 days a month and migrate 1,200 GB once. Processing, SQL, storage and model work are not applicable. Costs?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 3, p_transfer_days_per_month => 20, p_initial_transfer_gb => 1200, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+          ]
+        },
+        {
+          "id": "8075e210e3a84b78a955a5e43c98b504",
+          "question": [
+            "What exact inputs does the DCP calculator still need before it can estimate a partially specified request?"
+          ],
+          "sql": [
+            "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2)) AS issues WHERE issues.blocking"
+          ]
+        },
+        {
+          "id": "80eae7fcc4e04b80b5bca82f16c8daaa",
+          "question": [
+            "A scheduled batch runs 30 times a month, 2 hours per run. SQL and storage are not applicable, transfer is excluded, and model work is unknown. Monthly cost?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,storage', p_excluded_areas => 'transfer', p_unknown_areas => 'model_endpoints,one_time_model_jobs'))"
+          ]
+        },
+        {
+          "id": "a658c5f6c22a49b3bd41dd92912a03e5",
+          "question": [
+            "What if SEND_US01 keeps 12 TB of data?"
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 12}')"
+          ]
+        },
+        {
+          "id": "a87b25226f814c14b73919d38892031c",
+          "question": [
+            "What inputs do you need for a DCP continuous streaming estimate?"
+          ],
+          "sql": [
+            "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'CONTINUOUS_STREAMING' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+          ]
+        },
+        {
+          "id": "b58e5248c45940ada80859a4500bc2fe",
+          "question": [
+            "I selected scheduled batch for a DCP estimate. What inputs do you need and what other categories can I estimate?"
+          ],
+          "sql": [
+            "SELECT i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY i.input_order"
+          ]
+        },
+        {
+          "id": "b5e36ff0727c4399b2b4c22c4c2ab8e5",
+          "question": [
+            "Which defaults should I confirm for a DCP scheduled batch estimate?"
+          ],
+          "sql": [
+            "SELECT i.parameter_name AS input, i.default_value AS proposed_default, i.question AS what_to_confirm FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'CONFIRM_DEFAULT' ORDER BY i.input_order"
+          ]
+        },
+        {
+          "id": "d7148eea6f674ac88746d9b4e6f803e4",
+          "question": [
+            "Give me the DCP estimate for FIN_CLAIMS_02."
+          ],
+          "sql": [
+            "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02')"
+          ]
+        },
+        {
+          "id": "f040bb44e160453a96c1fa549668a366",
+          "question": [
+            "For a processing-only scheduled batch, show the scenario totals and confirmed area states."
+          ],
+          "sql": [
+            "SELECT totals.scenario, totals.recurring_monthly_usd, totals.area_states, totals.request_status FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 20, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs')) AS totals"
+          ]
+        },
+        {
+          "id": "f2ab946aae8a47498b3177768ad48ef7",
+          "question": [
+            "I need DCP scheduled batch and SQL reporting estimates. Which required inputs should I provide?"
+          ],
+          "sql": [
+            "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category IN ('SCHEDULED_BATCH', 'SQL_REPORTING') AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+          ]
+        },
+        {
+          "id": "f52e461edebc451a90f7e0412163b4a1",
+          "question": [
+            "What fields and defaults should I collect before estimating a batch workload?"
+          ],
+          "sql": [
+            "SELECT i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'SCHEDULED_BATCH' AND c.estimate_type = 'DCP' AND i.requirement = 'REQUIRED' ORDER BY i.input_order"
+          ]
+        }
+      ],
+      "sql_functions": [
+        {
+          "id": "01f1d6e283061e8ba1d7fcb2ed79d1ef",
+          "identifier": "__FQ__.dcp_calc_totals"
+        },
+        {
+          "id": "01f1d6e3044b1cbd898ef44169b4f0eb",
+          "identifier": "__FQ__.dcp_calc"
+        },
+        {
+          "id": "01f1d6e30e8b1fa38d6daf4b1a216cd4",
+          "identifier": "__FQ__.dcp_calc_run"
+        },
+        {
+          "id": "01f1d6e313d51ef69319ae909306c7d0",
+          "identifier": "__FQ__.dcp_intake_questions"
+        },
+        {
+          "id": "0208a96b2b5643c78cd24ddb7a60872e",
+          "identifier": "__FQ__.size_cluster"
+        },
+        {
+          "id": "0325bb8534ed4d3690a4b77644ead24d",
+          "identifier": "__FQ__.dcp_calc_line_items"
+        },
+        {
+          "id": "0a56a3bb85614ea8b08b612ca378f8ee",
+          "identifier": "__FQ__.estimate_lakebase_cost"
+        },
+        {
+          "id": "10333a8346e34637b3ef1db2c5649709",
+          "identifier": "__FQ__.estimate_fmapi_databricks_cost"
+        },
+        {
+          "id": "1049dde925a14cada533822f86c03650",
+          "identifier": "__FQ__.estimate_model_serving_cost"
+        },
+        {
+          "id": "229b401350f94a0a9c93f3d295b9d3a9",
+          "identifier": "__FQ__.estimate_jobs_classic_cost"
+        },
+        {
+          "id": "24f2c2d4b987400cb93ab7ca245ec00c",
+          "identifier": "__FQ__.estimator_catalog"
+        },
+        {
+          "id": "257a9c5fad3c45d09a8f94c441762ea3",
+          "identifier": "__FQ__.estimate_all_purpose_classic_cost"
+        },
+        {
+          "id": "261e181a032c47a9bd77f5e01b260389",
+          "identifier": "__FQ__.estimate_fmapi_proprietary_cost"
+        },
+        {
+          "id": "36065d7024ab4e6e9462cb556607a709",
+          "identifier": "__FQ__.get_dbu_price_status"
+        },
+        {
+          "id": "4883f9591b0e45b1864c885816f53f21",
+          "identifier": "__FQ__.estimate_databricks_apps_cost"
+        },
+        {
+          "id": "48bcd64ea5434874b90e30aec450000e",
+          "identifier": "__FQ__.get_vm_cost_per_hour"
+        },
+        {
+          "id": "514b4eb64ff44063aa6b7cf5a6930990",
+          "identifier": "__FQ__.estimate_dbsql_cost"
+        },
+        {
+          "id": "6c7f0735cb15419085252c1cca135d0c",
+          "identifier": "__FQ__.estimate_sized_workload"
+        },
+        {
+          "id": "76829a2dd92642cd9a306fe1e02fa26c",
+          "identifier": "__FQ__.dcp_calc_details"
+        },
+        {
+          "id": "a2a99dedd2494a2aaf8fa733f913ffa3",
+          "identifier": "__FQ__.dcp_check"
+        },
+        {
+          "id": "aeeaec84dbec48ab999f5451c9656df1",
+          "identifier": "__FQ__.estimate_dlt_classic_cost"
+        },
+        {
+          "id": "c8bdef60007b47dfa06b62f3a5b10846",
+          "identifier": "__FQ__.get_dbu_price"
+        },
+        {
+          "id": "cc7616847b2846f6a236da6074cacd96",
+          "identifier": "__FQ__.estimate_ai_classify_cost"
+        },
+        {
+          "id": "cf197b4548c346e683fa734eac1a3e69",
+          "identifier": "__FQ__.dcp_check_inputs"
+        },
+        {
+          "id": "d05fe035ab3c4e9bbf46a21ef188d198",
+          "identifier": "__FQ__.estimate_vector_search_cost"
+        },
+        {
+          "id": "d87bb45d35e241ca83db59a215c8a12a",
+          "identifier": "__FQ__.dcp_request"
+        },
+        {
+          "id": "e3cec81f098c42dbbd09d44343d2d33c",
+          "identifier": "__FQ__.estimate_ai_extract_cost"
+        },
+        {
+          "id": "ea2851f0af2c4fdebc357414c4f96f66",
+          "identifier": "__FQ__.get_serverless_rate"
+        },
+        {
+          "id": "ec9c242d9a7b419a93d1d9daaea790c0",
+          "identifier": "__FQ__.estimate_serverless_compute_cost"
+        },
+        {
+          "id": "fcfb430ae74a4de7b140ba19e5cdef51",
+          "identifier": "__FQ__.estimate_ai_parse_cost"
+        }
+      ],
+      "join_specs": [
+        {
+          "id": "01f1d6e0fc831919897b6bceca90fd51",
+          "left": {
+            "identifier": "__FQ__.cost_estimator_functional_capabilities"
+          },
+          "right": {
+            "identifier": "__FQ__.cost_estimator_workload_inputs"
+          },
+          "sql": [
+            "cost_estimator_functional_capabilities.capability_id = cost_estimator_workload_inputs.capability_id AND cost_estimator_functional_capabilities.estimate_type = cost_estimator_workload_inputs.estimate_type",
+            "--rt=FROM_RELATIONSHIP_TYPE_ONE_TO_MANY--"
+          ],
+          "comment": [
+            "Capabilities to workload inputs"
+          ],
+          "instruction": [
+            "Use to list the inputs needed for a selected cost estimation category. Always join on both keys, because the same category name can exist under more than one estimate type (for example ML_TRAINING under DCP and Lakemeter sizing). Order inputs by the capability sort order, then the input order."
+          ]
+        }
+      ]
     },
-    {
-     "column_name": "sku_name",
-     "description": [
-      "Billing SKU / product type, e.g. JOBS_COMPUTE, ALL_PURPOSE_COMPUTE, SQL_COMPUTE."
-     ],
-     "synonyms": [
-      "sku",
-      "product",
-      "product type",
-      "workload sku"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "tier",
-     "description": [
-      "Pricing tier: STANDARD, PREMIUM, ENTERPRISE."
-     ],
-     "synonyms": [
-      "pricing tier",
-      "plan",
-      "edition"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
+    "benchmarks": {
+      "questions": [
+        {
+          "id": "fb2a5e1ae3e84a59a68142df9c01e4ba",
+          "question": [
+            "A streaming workload needs seconds-level latency. What does it cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "f6594990bf5145bbb61edba4bd80a079",
+          "question": [
+            "A scheduled batch has 2 hours per run but no runs per month. What is the cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it.Input check: request_status = NEEDS_INPUT, errors = runs_per_month MISSING. The agent must NOT give a cost; it asks how many times the batch runs per month (and gives no numbers)."
+          ]
+        },
+        {
+          "id": "f3ab6873bc72453fb56beaef5456fa85",
+          "question": [
+            "Give the core monthly range Low / Expected / High / Stress for SEND_US01."
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 146.76, 292.60, 531.78, 808.95. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "f26fac66088848cd840680f359482bb4",
+          "question": [
+            "What is the High all-in monthly cost for SEND_US01 at 10 TB?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.81. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "edd7c84cf34b4b49b4f1cc39a562bfb7",
+          "question": [
+            "What is the confidence for SEND_US01 and why?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "ea8a72f55e3440c38131ca0d6e3c5ade",
+          "question": [
+            "What are the monthly Low / Expected / High and one-time costs for the AI_RAG_MODEL_API preset?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'AI_RAG_MODEL_API')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 104.69, 475.60, 846.51, 509.29, 551.79. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "df1cd5eec28549c1a863a93067334855",
+          "question": [
+            "A scheduled batch runs 30 times a month, 2 hours per run, and no DBU rate is given. What is the Expected monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "c72145ce03174a92b77a2f97f75ea998",
+          "question": [
+            "SEND daily volume is entered as -1 GB. What happens?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01', p_overrides => '{\"transfer.daily_gb_expected\": -1}')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Input check: request_status = NEEDS_INPUT with INVALID_VALUE (transfer.daily_gb_expected must be a non-negative number, got -1). The agent must NOT give numbers; it says -1 GB is invalid and asks for the correct daily volume."
+          ]
+        },
+        {
+          "id": "b4e921efb561487f8db32613e3868030",
+          "question": [
+            "A streaming job has no DBU rate and no run details. What is the Expected monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "5be589e2293b4c06aa96be78d772f1e3",
+          "question": [
+            "Why is the Low backfill cost $0.00 for SEND?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "4dd8131c1ea74a7ea3c3bcd0570112ef",
+          "question": [
+            "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration. What are the costs?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "4dad97c8c6cd4d00889be0484872b29c",
+          "question": [
+            "100 calls a day on gpt-5-4, 1,000 input and 100 output tokens per call. What is the Expected monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 100, p_input_tokens_expected => 1000, p_output_tokens_expected => 100, p_not_applicable_areas => 'processing,sql,transfer,storage,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, storage, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "337a49d214384de2ac665066330a94b9",
+          "question": [
+            "SEND says each file is read 3 times. What is the new High all-in monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"s3_read_requests_per_file\": 3}')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.83. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "262e1566e66d4597baf2da3c828ffcb3",
+          "question": [
+            "What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 9,278.76, 125.00. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "1e4d6abfb7f44d7c9a1609311a5c88a4",
+          "question": [
+            "Which SEND_US01 costs are pending?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "184df023dee74cf4bfb0ed6bcdbb66a9",
+          "question": [
+            "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. What is the Expected monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "17fccc5e0a254839a67839fe78c16696",
+          "question": [
+            "What is the High core monthly estimate for SEND_US01?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 531.78. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "17c840184f4344dba57a7601f2f62871",
+          "question": [
+            "SQL reporting for 25 concurrent users, 22 working days. What is the High monthly cost?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 25, p_working_days_per_month => 22, p_not_applicable_areas => 'processing,transfer,storage,model_endpoints,one_time_model_jobs'))"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+          ]
+        },
+        {
+          "id": "13002befb3d14f3581e8998cac75c52b",
+          "question": [
+            "If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}')"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 716.81, 8,701.76, 100.00. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "127efeaa5df14d49b458fa28fee5db8c",
+          "question": [
+            "What rate is used for Databricks Jobs Serverless and where does it come from?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%JOBS_SERVERLESS%'"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 0.35. At other rate sources the figures differ; grade against the answer SQL's result."
+          ]
+        },
+        {
+          "id": "01f1d6ee8ab711898293cc145ca9d697",
+          "question": [
+            "provide a cost estimate for 12 GB a day through DataSync"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT issues.section, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_daily_gb_expected => 12)) AS issues WHERE issues.blocking"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "The answer must give no dollar figures and must not call dcp_calc_totals; it asks the user to confirm the unconfirmed calculator areas and any other blocking inputs."
+          ]
+        },
+        {
+          "id": "01f1d6e17dc61ca8991b2e968fd678c7",
+          "question": [
+            "How much will a classic Jobs cluster cost me per month?"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT c.category, i.parameter_name AS input, i.question AS what_to_provide, i.unit FROM __FQ__.cost_estimator_functional_capabilities AS c JOIN __FQ__.cost_estimator_workload_inputs AS i ON c.capability_id = i.capability_id AND c.estimate_type = i.estimate_type WHERE c.category = 'JOBS_CLASSIC' AND c.estimate_type = 'Lakemeter' AND c.capability_kind = 'PRODUCT_ESTIMATE' AND i.requirement = 'REQUIRED' ORDER BY c.sort_order, i.input_order"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "No inputs are given, so the agent must not run estimate_jobs_classic_cost or show any dollar figures or cost table; it asks in prose for the required inputs."
+          ]
+        },
+        {
+          "id": "01f1d4809f4018909f23fd5760f9c9f7",
+          "question": [
+            "Provide the dcp estimate for the below usecase\n",
+            "{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}"
+          ],
+          "answer": [
+            {
+              "format": "SQL",
+              "content": [
+                "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+              ]
+            }
+          ],
+          "evaluation_note": [
+            "The response must ask for the missing inputs and must not present any dollar estimate."
+          ]
+        }
+      ]
     }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_fmapi_databricks_rates",
-   "description": [
-    "Foundation Model API (Databricks-hosted) token/hourly DBU rates per model; input_divisor, is_hourly."
-   ],
-   "column_configs": [
-    {
-     "column_name": "dbu_rate",
-     "description": [
-      "DBU rate per unit (per input_divisor tokens, or per hour)."
-     ],
-     "synonyms": [
-      "rate",
-      "dbu rate"
-     ]
-    },
-    {
-     "column_name": "input_divisor",
-     "description": [
-      "Token divisor the rate applies per (usually 1,000,000)."
-     ],
-     "synonyms": [
-      "token divisor",
-      "per tokens"
-     ]
-    },
-    {
-     "column_name": "is_hourly",
-     "description": [
-      "Whether the rate is hourly (provisioned) vs token-based."
-     ],
-     "synonyms": [
-      "hourly"
-     ]
-    },
-    {
-     "column_name": "model",
-     "description": [
-      "Databricks-hosted foundation model name (e.g. bge-large)."
-     ],
-     "synonyms": [
-      "foundation model",
-      "llm",
-      "embedding model",
-      "model name"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "rate_type",
-     "description": [
-      "Rate type: input_token, output_token, provisioned, etc."
-     ],
-     "synonyms": [
-      "token type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_fmapi_proprietary_rates",
-   "description": [
-    "Foundation Model API (proprietary provider models) DBU rates per provider/model/endpoint_type/context_length."
-   ],
-   "column_configs": [
-    {
-     "column_name": "context_length",
-     "description": [
-      "Context length bucket (e.g. all)."
-     ],
-     "synonyms": [
-      "context window"
-     ]
-    },
-    {
-     "column_name": "dbu_rate",
-     "description": [
-      "DBU rate per unit (per input_divisor tokens, or per hour)."
-     ],
-     "synonyms": [
-      "rate",
-      "dbu rate"
-     ]
-    },
-    {
-     "column_name": "endpoint_type",
-     "description": [
-      "Endpoint type (e.g. global)."
-     ],
-     "synonyms": [
-      "endpoint"
-     ]
-    },
-    {
-     "column_name": "model",
-     "description": [
-      "Proprietary model name (e.g. claude-haiku-4-5)."
-     ],
-     "synonyms": [
-      "foundation model",
-      "llm",
-      "model name"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "provider",
-     "description": [
-      "Model provider: anthropic, openai, google."
-     ],
-     "synonyms": [
-      "model provider",
-      "vendor"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "rate_type",
-     "description": [
-      "Rate type: input_token, output_token, batch_inference, etc."
-     ],
-     "synonyms": [
-      "token type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_instance_dbu_rates",
-   "description": [
-    "DBU/hour per VM instance type (classic/serverless compute sizing)."
-   ],
-   "column_configs": [
-    {
-     "column_name": "dbu_rate",
-     "description": [
-      "DBU per hour for this instance type."
-     ],
-     "synonyms": [
-      "dbu per hour",
-      "dbus per hour",
-      "dbu rate"
-     ]
-    },
-    {
-     "column_name": "instance_type",
-     "description": [
-      "VM / node instance type."
-     ],
-     "synonyms": [
-      "vm",
-      "node",
-      "node type",
-      "machine type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "memory_gb",
-     "description": [
-      "Memory in GB."
-     ],
-     "synonyms": [
-      "ram",
-      "memory"
-     ]
-    },
-    {
-     "column_name": "vcpus",
-     "description": [
-      "Virtual CPUs."
-     ],
-     "synonyms": [
-      "cores",
-      "cpus",
-      "vcpu"
-     ]
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_serverless_rates",
-   "description": [
-    "Serverless product DBU rates: product in model_serving (sizes cpu/gpu_*), vector_search (standard/storage_optimized)."
-   ],
-   "column_configs": [
-    {
-     "column_name": "dbu_rate",
-     "description": [
-      "DBU rate for the serverless product/size."
-     ],
-     "synonyms": [
-      "dbu rate",
-      "dbus per hour"
-     ]
-    },
-    {
-     "column_name": "product",
-     "description": [
-      "Serverless product: model_serving, vector_search."
-     ],
-     "synonyms": [
-      "serverless product"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "size_or_model",
-     "description": [
-      "GPU/CPU size for model serving, or vector search mode (standard/storage_optimized)."
-     ],
-     "synonyms": [
-      "gpu type",
-      "instance size",
-      "mode",
-      "vector search mode"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_sku_region_map",
-   "description": [
-    "Mapping between SKU region names and cloud region codes (e.g. US_EAST_N_VIRGINIA -> us-east-1)."
-   ],
-   "column_configs": [
-    {
-     "column_name": "region_code",
-     "description": [
-      "Cloud region code (e.g. us-east-1)."
-     ],
-     "synonyms": [
-      "region",
-      "cloud region"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "sku_region",
-     "description": [
-      "SKU region name (e.g. US_EAST_N_VIRGINIA)."
-     ],
-     "synonyms": [
-      "sku region"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_vm_costs",
-   "description": [
-    "Cloud VM $/hour by cloud, region, instance_type, pricing_tier, payment_option."
-   ],
-   "column_configs": [
-    {
-     "column_name": "cloud",
-     "description": [
-      "Cloud provider."
-     ],
-     "synonyms": [
-      "provider",
-      "csp"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "cost_per_hour",
-     "description": [
-      "Cloud VM cost per hour in USD."
-     ],
-     "synonyms": [
-      "vm cost",
-      "vm price",
-      "hourly cost",
-      "compute cost",
-      "instance cost",
-      "dollars per hour"
-     ]
-    },
-    {
-     "column_name": "instance_type",
-     "description": [
-      "VM / node instance type (e.g. m5.xlarge)."
-     ],
-     "synonyms": [
-      "vm",
-      "node",
-      "node type",
-      "machine type",
-      "instance",
-      "ec2 type"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "payment_option",
-     "description": [
-      "Payment option (e.g. NA, 1yr, 3yr)."
-     ],
-     "synonyms": [
-      "commitment"
-     ]
-    },
-    {
-     "column_name": "pricing_tier",
-     "description": [
-      "VM pricing tier: on_demand, reserved, spot."
-     ],
-     "synonyms": [
-      "on demand",
-      "reserved",
-      "spot",
-      "purchase option"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    },
-    {
-     "column_name": "region",
-     "description": [
-      "Cloud region code (e.g. us-east-1)."
-     ],
-     "synonyms": [
-      "region"
-     ],
-     "enable_format_assistance": true,
-     "enable_entity_matching": true
-    }
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_sizing_profiles",
-   "description": [
-    "Workload sizing profiles (INGESTION, ETL, STREAMING, ML_TRAINING, ML_INFERENCE): memory and cores per GB, min/max workers, throughput per core-hour, cluster start minutes, node category, tips. Planning assumptions used by size_cluster."
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_sizing_node_families",
-   "description": [
-    "Node families size_cluster may choose from, per cloud and category (regex on instance_type). The smallest fitting node is chosen."
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_sizing_policy",
-   "description": [
-    "Worker limit and allowed node types for sized clusters per cloud, from the job cluster policy (or a default guardrail). Quote max_workers and source when a workload exceeds it."
-   ]
-  },
-  {
-   "identifier": "__FQ__.ref_dbu_price_card",
-   "description": [
-    "Price per DBU for every Lakemeter estimate and sizing function, per cloud, region, tier and product: price_per_dbu, status (GOVERNED from system.billing.account_prices, REFERENCE_ONLY from list prices in test, PENDING = no price), billing_sku, source, list_price_reference (comparison only). Quote status and source; never substitute."
-   ]
   }
- ],
- "sql_functions": [
-  "__FQ__.estimate_all_purpose_classic_cost",
-  "__FQ__.estimate_jobs_classic_cost",
-  "__FQ__.estimate_ai_extract_cost",
-  "__FQ__.dcp_calc_line_items",
-  "__FQ__.estimate_dlt_classic_cost",
-  "__FQ__.dcp_calc_run",
-  "__FQ__.dcp_calc",
-  "__FQ__.get_vm_cost_per_hour",
-  "__FQ__.estimate_dbsql_cost",
-  "__FQ__.dcp_calc_totals",
-  "__FQ__.estimate_lakebase_cost",
-  "__FQ__.estimate_fmapi_databricks_cost",
-  "__FQ__.estimate_ai_parse_cost",
-  "__FQ__.estimate_vector_search_cost",
-  "__FQ__.estimate_serverless_compute_cost",
-  "__FQ__.estimate_model_serving_cost",
-  "__FQ__.estimate_fmapi_proprietary_cost",
-  "__FQ__.get_serverless_rate",
-  "__FQ__.dcp_request",
-  "__FQ__.get_dbu_price",
-  "__FQ__.dcp_calc_details",
-  "__FQ__.estimate_databricks_apps_cost",
-  "__FQ__.estimate_ai_classify_cost",
-  "__FQ__.size_cluster",
-  "__FQ__.estimate_sized_workload",
-  "__FQ__.get_dbu_price_status",
-  "__FQ__.dcp_check",
-  "__FQ__.dcp_intake_questions",
-  "__FQ__.estimator_catalog"
- ],
- "text_instructions": [
-  "## PURPOSE\n- Estimate Databricks and cloud costs through DCP or Lakemeter.\n\n## DISAMBIGUATION\n- Follow: Understand → Discover → Gather Facts → Check Coverage → Build and Validate → Calculate and Present.\n- Accept plain language, JSON, and prior answers; input format never selects the estimator.\n- If product is unclear or options are requested, call `estimator_catalog`; offer categories/products, allow multiple selections and “not sure.” The catalog guides discovery.\n- Use DCP for supported workload estimates and named cases. Only explicit cluster-sizing requests use size-then-price. Other Lakemeter functions require an explicit, mapped configured product.\n- Missing DCP facts trigger follow-up, not rerouting. Call the public estimate function; its validation is authoritative. On `NEEDS_INPUT`, show no figures and ask returned questions; retain answers and follow `next_step` internally. Use `dcp_intake_questions` for selected-area required/default facts when needed.\n- Map each component before estimating. Unsupported or unpriced items stay PENDING with a reason. Never combine methods or pricing bases.\n\n## DATA QUALITY NOTES\n- Never invent inputs, scope, rates, defaults, or area states. Disclose defaults; preserve user IDs, scenarios, and answers.\n- Confirm DCP areas as INCLUDED, EXCLUDED, UNKNOWN, or NOT_APPLICABLE; UNKNOWN is not excluded. Reuse answers.\n- Keep available, missing, PENDING and not-ported distinct; partial is not complete.\n\n## CONSTRAINTS\n- Use calculator outputs for math; never substitute rates or calculate from rounded values.\n- Say complete only when returned status is COMPLETE. Show method, pricing basis/status, assumptions, exclusions, and PENDING items.\n\n## Instructions you must follow when providing summaries\n- Quote returned figures/scenarios. Annual/first-year use unrounded line items; STRESS is an operating sensitivity, not a forecast.\n- Keep method-specific subtotals separate. Label planning estimates and unsupported components."
- ],
- "example_question_sqls": [
-  {
-   "question": [
-    "12 GB a day moves through DataSync on 20 days a month. Costs?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 12, p_transfer_days_per_month => 20))"
-   ]
-  },
-  {
-   "question": [
-    "What is the monthly cost of a Lakebase instance with 4 capacity units and 2 HA nodes?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_lakebase_cost('AWS','us-east-1','ENTERPRISE',4,2,30)"
-   ]
-  },
-  {
-   "question": [
-    "Estimate an ADVANCED DLT pipeline on AWS us-east-1 with 5 m5.xlarge workers and an m5.xlarge driver, Photon, running 2 hours daily."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_dlt_classic_cost('AWS','us-east-1','ENTERPRISE','ADVANCED','m5.xlarge','m5.xlarge',5,true,1,120,30)"
-   ]
-  },
-  {
-   "question": [
-    "Why is the FIN_CLAIMS_02 confidence what it is, and what is still pending?"
-   ],
-   "sql": [
-    "SELECT section, component_id, item, detail FROM __FQ__.dcp_calc_details(p_use_case => 'FIN_CLAIMS_02') WHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION')"
-   ]
-  },
-  {
-   "question": [
-    "500 calls a day on claude-sonnet-4-6 with 2,000 input and 400 output tokens each - monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'claude-sonnet-4-6', p_calls_per_day => 500, p_input_tokens_expected => 2000, p_output_tokens_expected => 400))"
-   ]
-  },
-  {
-   "question": [
-    "Which DCP use cases are loaded?"
-   ],
-   "sql": [
-    "SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests ORDER BY use_case_id"
-   ]
-  },
-  {
-   "question": [
-    "Compare serverless Jobs vs classic Jobs monthly cost for the same m5.xlarge driver + 10 m5.xlarge workers running 1 hour/day."
-   ],
-   "sql": [
-    "SELECT 'serverless' AS mode, total_cost_per_month FROM __FQ__.estimate_serverless_compute_cost('AWS','us-east-1','ENTERPRISE','JOBS','m5.xlarge','m5.xlarge',10,'standard',1,60,30) UNION ALL SELECT 'classic', total_cost_per_month FROM __FQ__.estimate_jobs_classic_cost('AWS','us-east-1','ENTERPRISE','m5.xlarge','m5.xlarge',10,false,1,60,30)"
-   ]
-  },
-  {
-   "question": [
-    "Estimate the monthly cost of a classic Jobs cluster on AWS us-east-1 with an m5.xlarge driver and 10 m5.xlarge workers, Photon on, running 1 hour per day."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_jobs_classic_cost('AWS','us-east-1','ENTERPRISE','m5.xlarge','m5.xlarge',10,true,1,60,30)"
-   ]
-  },
-  {
-   "question": [
-    "How much does a serverless SQL Medium warehouse cost if it runs about 160 hours a month?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_dbsql_cost('AWS','us-east-1','ENTERPRISE','serverless','Medium',1,NULL,NULL,NULL,160)"
-   ]
-  },
-  {
-   "question": [
-    "What rates does the DCP calculator use?"
-   ],
-   "sql": [
-    "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card ORDER BY provider, sku"
-   ]
-  },
-  {
-   "question": [
-    "Reporting for 40 concurrent users over 20 working days - monthly range?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 40, p_working_days_per_month => 20))"
-   ]
-  },
-  {
-   "question": [
-    "Estimate FM API cost for 1 billion input tokens to the Databricks-hosted bge-large model."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_fmapi_databricks_cost('AWS','us-east-1','ENTERPRISE','bge-large','input_token',1000000000)"
-   ]
-  },
-  {
-   "question": [
-    "Estimate a GPU model serving endpoint (gpu_small_t4) with concurrency 4 on AWS us-east-1."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_model_serving_cost('AWS','us-east-1','ENTERPRISE','gpu_small_t4',4,30)"
-   ]
-  },
-  {
-   "question": [
-    "Show the Expected line items for Claims Fraud Scoring."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_line_items(p_use_case => 'Claims Fraud Scoring', p_scenario => 'EXPECTED')"
-   ]
-  },
-  {
-   "question": [
-    "Give me the DCP estimate for FIN_CLAIMS_02."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02')"
-   ]
-  },
-  {
-   "question": [
-    "Estimate cost to classify 1,000,000 short_text documents with ai_classify."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_ai_classify_cost('AWS','us-east-1','ENTERPRISE','short_text',1000000,NULL)"
-   ]
-  },
-  {
-   "question": [
-    "An event-driven batch runs 2 to 6 hours, 4 times a month. What does it cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'EVENT_DRIVEN_BATCH', p_runtime_hours_low => 2, p_runtime_hours_expected => 4, p_runtime_hours_high => 6, p_runs_per_month => 4))"
-   ]
-  },
-  {
-   "question": [
-    "What does a Vector Search standard endpoint with 10 million vectors cost per month on AWS us-east-1?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_vector_search_cost('AWS','us-east-1','ENTERPRISE','standard',10,30)"
-   ]
-  },
-  {
-   "question": [
-    "What if SEND_US01 keeps 12 TB of data?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 12}')"
-   ]
-  },
-  {
-   "question": [
-    "What if FIN_CLAIMS_02 runs its nightly rebuild 30 times a month?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02', p_overrides => '{\"processing[C02].runs_per_month\": 30}')"
-   ]
-  },
-  {
-   "question": [
-    "Cost of 2 medium Databricks Apps running continuously (730 hours) on AWS us-east-1."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_databricks_apps_cost('AWS','us-east-1','ENTERPRISE','medium',2,730)"
-   ]
-  },
-  {
-   "question": [
-    "I have a workload of 10 GB incremental ingestion on a daily basis. What cluster do I need and what will it cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_sized_workload(p_workload => 'INGESTION', p_data_gb => 10, p_runs_per_day => 1)"
-   ]
-  },
-  {
-   "question": [
-    "What cluster size do I need for a 500 GB nightly ETL job?"
-   ],
-   "sql": [
-    "SELECT workload_profile, node_type, driver_node_type, num_workers, autoscale_min_workers, autoscale_max_workers, total_worker_vcpus, total_worker_memory_gb, dbu_per_hour, window_minutes, runtime_minutes_low, runtime_minutes_expected, runtime_minutes_high, limiting_factor, status, workers_needed, max_workers_allowed, max_workers_source, options, throughput_basis, shuffle_partitions, assumptions, tips FROM __FQ__.size_cluster(p_workload => 'ETL', p_data_gb => 500, p_runs_per_day => 1)"
-   ]
-  },
-  {
-   "question": [
-    "We ingest 10 TB a day and the load must finish within 30 minutes. What cluster and cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_sized_workload(p_workload => 'INGESTION', p_data_gb => 10000, p_runs_per_day => 1, p_window_minutes => 30)"
-   ]
-  },
-  {
-   "question": [
-    "What would it cost to stream 50 GB a day from Kafka?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_sized_workload(p_workload => 'STREAMING', p_data_gb => 50)"
-   ]
-  },
-  {
-   "question": [
-    "We load 2 GB every hour with Auto Loader. Cluster and monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.estimate_sized_workload(p_workload => 'INGESTION', p_data_gb => 48, p_runs_per_day => 24)"
-   ]
-  },
-  {
-   "question": [
-    "Where does the Lakebase DBU price come from?"
-   ],
-   "sql": [
-    "SELECT tier, product_type, billing_sku, price_per_dbu, status, source FROM __FQ__.ref_dbu_price_card WHERE cloud = 'AWS' AND region = 'us-east-1' AND tier = 'ENTERPRISE' AND product_type = 'DATABASE_SERVERLESS_COMPUTE'"
-   ]
-  },
-  {
-   "question": [
-    "What DBU rate does the DCP calculator use for SQL Pro, and what is its status?"
-   ],
-   "sql": [
-    "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%SQL_PRO%'"
-   ]
-  },
-  {
-   "question": [
-    "15 GB a day goes through DataSync on 18 days a month, with a 2,000 GB initial migration. Monthly and one-time cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 15, p_transfer_days_per_month => 18, p_initial_transfer_gb => 2000))"
-   ]
-  },
-  {
-   "question": [
-    "5 TB is retained in S3 with 400 files a day, none encrypted, each read twice. The other calculator areas are not applicable. Monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 5, p_files_per_day => 400, p_encrypted_files_per_day => 0, p_s3_read_requests_per_file => 2, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
-   ]
-  },
-  {
-   "question": [
-    "A scheduled batch runs 30 times a month, 2 hours per run. SQL and storage are not applicable, transfer is excluded, and model work is unknown. Monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,storage', p_excluded_areas => 'transfer', p_unknown_areas => 'model_endpoints,one_time_model_jobs'))"
-   ]
-  },
-  {
-   "question": [
-    "We copy 3 GB a day with DataSync on 20 days a month and migrate 1,200 GB once. Processing, SQL, storage and model work are not applicable. Costs?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 3, p_transfer_days_per_month => 20, p_initial_transfer_gb => 1200, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
-   ]
-  },
-  {
-   "question": [
-    "Two Kafka streaming jobs need second-level latency. SQL, transfer, storage and model work are not applicable. What do they cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_quantity => 2, p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ]
-  }
- ],
- "sample_questions": [
-  [
-   "Monthly cost of a Lakebase instance with 4 capacity units and 2 HA nodes?"
-  ],
-  [
-   "FM API cost for 1 billion input tokens to Databricks claude or bge-large?"
-  ],
-  [
-   "What rates does the DCP calculator use?"
-  ],
-  [
-   "Cost of an ADVANCED DLT pipeline on 5 m5.xlarge workers running 2 hours daily."
-  ],
-  [
-   "How much does a serverless SQL Medium warehouse cost for 160 hours a month?"
-  ],
-  [
-   "Which DCP use cases are loaded?"
-  ],
-  [
-   "What is pending for FIN_CLAIMS_02 and why?"
-  ],
-  [
-   "Cost of 2 medium Databricks Apps running continuously?"
-  ],
-  [
-   "What does a Vector Search endpoint with 10 million vectors cost per month?"
-  ],
-  [
-   "Estimate the monthly cost of a classic Jobs cluster: AWS us-east-1, m5.xlarge driver + 10 m5.xlarge workers, Photon, 1 hour/day."
-  ],
-  [
-   "Estimate a GPU model serving endpoint (gpu_small_t4) at concurrency 4."
-  ],
-  [
-   "Give me the DCP estimate for FIN_CLAIMS_02."
-  ],
-  [
-   "Cost to extract fields from 500,000 invoices with ai_extract?"
-  ],
-  [
-   "I have 10 GB of incremental ingestion daily. What cluster do I need and what will it cost?"
-  ]
- ],
- "benchmarks": [
-  {
-   "question": [
-    "What is the High core monthly estimate for SEND_US01?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 531.78. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "Give the core monthly range Low / Expected / High / Stress for SEND_US01."
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 146.76, 292.60, 531.78, 808.95. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "What is the High all-in monthly cost for SEND_US01 at 10 TB?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 762.81. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 9,278.76, 125.00. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 716.81, 8,701.76, 100.00. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "What is the confidence for SEND_US01 and why?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "Which SEND_US01 costs are pending?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "What rate is used for Databricks Jobs Serverless and where does it come from?"
-   ],
-   "sql": [
-    "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%JOBS_SERVERLESS%'"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 0.35. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "Why is the Low backfill cost $0.00 for SEND?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "SEND says each file is read 3 times. What is the new High all-in monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"s3_read_requests_per_file\": 3}')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 762.83. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "SQL reporting for 25 concurrent users, 22 working days. What is the High monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 25, p_working_days_per_month => 22, p_not_applicable_areas => 'processing,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "A scheduled batch runs 30 times a month, 2 hours per run, and no DBU rate is given. What is the Expected monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration. What are the costs?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "A streaming job has no DBU rate and no run details. What is the Expected monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. What is the Expected monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "What are the monthly Low / Expected / High and one-time costs for the AI_RAG_MODEL_API preset?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'AI_RAG_MODEL_API')"
-   ],
-   "evaluation_note": [
-    "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.",
-    "Expected at governed account rates (DCP benchmark workbook, tab C): 104.69, 475.60, 846.51, 509.29, 551.79. At other rate sources the figures differ; grade against the answer SQL's result."
-   ]
-  },
-  {
-   "question": [
-    "100 calls a day on gpt-5-4, 1,000 input and 100 output tokens per call. What is the Expected monthly cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 100, p_input_tokens_expected => 1000, p_output_tokens_expected => 100, p_not_applicable_areas => 'processing,sql,transfer,storage,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, storage, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "A scheduled batch has 2 hours per run but no runs per month. What is the cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it.",
-    "Input check: request_status = NEEDS_INPUT, errors = runs_per_month MISSING. The agent must NOT give a cost; it asks how many times the batch runs per month (and gives no numbers)."
-   ]
-  },
-  {
-   "question": [
-    "A streaming workload needs seconds-level latency. What does it cost?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_latency_requirement => 'SECONDS', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
-   ],
-   "evaluation_note": [
-    "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
-   ]
-  },
-  {
-   "question": [
-    "SEND daily volume is entered as -1 GB. What happens?"
-   ],
-   "sql": [
-    "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01', p_overrides => '{\"transfer.daily_gb_expected\": -1}')"
-   ],
-   "evaluation_note": [
-    "Input check: request_status = NEEDS_INPUT with INVALID_VALUE (transfer.daily_gb_expected must be a non-negative number, got -1). The agent must NOT give numbers; it says -1 GB is invalid and asks for the correct daily volume."
-   ]
-  }
- ]
 }

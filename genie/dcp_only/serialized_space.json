@@ -1,0 +1,162 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {
+        "id": "095b0df06fc558448ab5db6d06752e74",
+        "question": [
+          "I am building batch and streaming pipelines. What inputs do you need?"
+        ]
+      },
+      {
+        "id": "6c5cffb8f97d55e9b5a6e4bd1384d4cf",
+        "question": [
+          "Estimate the named SEND_US01 preset."
+        ]
+      },
+      {
+        "id": "ba51576daa92593689383ac0e9e232a9",
+        "question": [
+          "I need a DCP cost estimate. What information do you need?"
+        ]
+      }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "identifier": "__FQ__.dcp_engine_input_requirements",
+        "description": [
+          "Schema for the five DCP engines. Filter request_area to the selected engine. Select parameter_name, requirement, unit, default_value_json, applies_when, question and example_value_json only when useful; dcp_check_inputs determines actual missing inputs."
+        ],
+        "column_configs": [
+          {
+            "column_name": "engine",
+            "description": [
+              "One of the five DCP calculator engines."
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          },
+          {
+            "column_name": "request_area",
+            "description": [
+              "processing, sql, transfer, storage, model_endpoints, one_time_model_jobs."
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          }
+        ]
+      }
+    ]
+  },
+  "instructions": {
+    "text_instructions": [
+      {
+        "id": "2d0e811e536f53cca60fbb11c830c248",
+        "content": [
+          "## PURPOSE\n- Estimate DCP workloads using the existing calculator only. Support Processing (scheduled/event-driven batch, continuous streaming, ML training, batch scoring), SQL Reporting, DataSync Transfer, S3/KMS Storage and Model API (recurring endpoints and one-time jobs).\n\n## DISAMBIGUATION\n- For a vague request, name the five engines and ask which apply. For a clear request, use the stated engine. No estimate-type routing or product-catalog joins are needed.\n- Ask for missing applicable inputs in plain language, with units. Ask required inputs first, conditional inputs only when applicable; confirm defaults, request ranges only when wanted. Never ask again for supplied values. If useful, show a small illustrative JSON template; prose answers are equally valid.\n\n## CONSTRAINTS\n- For every new workload, pasted JSON or prose, the first query must call dcp_check_inputs with named p_request. For prose use dcp_request with only stated facts. Named presets already define scope.\n- Before any calculation, resolve every blocking issue and confirm all six request sections: processing, sql, transfer, storage, model_endpoints, one_time_model_jobs. Record only explicit INCLUDED, EXCLUDED, NOT_APPLICABLE or UNKNOWN states in request _areas. UNKNOWN or UNCONFIRMED requires follow-up. Silence is never NOT_APPLICABLE.\n- When validation blocks, ask the returned questions in plain language; show no costs. Update the request JSON itself with the answers and rerun validation. Area states in p_overrides are ignored. Never invent inputs or replace the user's workload with a preset.\n- Only after validation succeeds call dcp_calc_totals. For breakdowns call dcp_calc_line_items; for assumptions, scope and reasons call dcp_calc_details. Preserve original JSON, IDs, scenarios and explicit overrides across follow-ups. Omit unused parameters; never pass the string 'NULL'. Never price directly with internal dcp_calc or dcp_calc_run.\n\n## Instructions you must follow when providing summaries\n- State DCP method, pricing basis/status, defaults, assumptions and pending items. NULL or PENDING is never zero; if all items are pending, explain without a cost table. Suppress figures for unresolved area states. Rerun after errors.\n- For engine breakdowns group actual line items by scenario, engine and recurrence; keep monthly and one-time charges separate, and show priced subtotals with pending counts. Never add alternative scenarios or invent allocations.\n- Offer remaining DCP engines once after a result; do not reopen categories already explicitly excluded or not applicable. Estimates are for planning, not invoices."
+        ]
+      }
+    ],
+    "sql_functions": [
+      {
+        "id": "40c0ab08aaee55d88ce85d157069456d",
+        "identifier": "__FQ__.dcp_check"
+      },
+      {
+        "id": "4133848121585e21b263499aea4afb45",
+        "identifier": "__FQ__.dcp_check_inputs"
+      },
+      {
+        "id": "47d439f5b3d15a8fba531f19714c4c60",
+        "identifier": "__FQ__.dcp_calc"
+      },
+      {
+        "id": "7489210e81d35afc80b7dac606068ff0",
+        "identifier": "__FQ__.dcp_calc_line_items"
+      },
+      {
+        "id": "adda212c3f3451bd9f16009227b19da3",
+        "identifier": "__FQ__.dcp_calc_run"
+      },
+      {
+        "id": "b87211b445395b35ab04c5818c9dd2d8",
+        "identifier": "__FQ__.dcp_request"
+      },
+      {
+        "id": "c73d651572105ef890d98f82ae0a19f4",
+        "identifier": "__FQ__.dcp_calc_details"
+      },
+      {
+        "id": "ed0eeff68bdb57b49844ba7fae72b4d1",
+        "identifier": "__FQ__.dcp_calc_totals"
+      }
+    ],
+    "example_question_sqls": [
+      {
+        "id": "05f295ac49a55477a838d5ac0095c2fa",
+        "question": [
+          "Validation is READY and all areas are confirmed for this JSON. Calculate the estimate: {\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}"
+        ],
+        "sql": [
+          "SELECT t.scenario, t.recurring_monthly_usd, t.one_time_usd, t.first_year_usd, t.pending_items, t.pending_detail, t.status, t.area_states, t.request_status, t.errors, t.rate_card_source, t.disclaimer FROM __FQ__.dcp_calc_totals(p_request => '{\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}') AS t"
+        ]
+      },
+      {
+        "id": "26a40940337859aa84b7b0f9dc7d655c",
+        "question": [
+          "I need a scheduled batch estimate, 2 hours per run, 20 runs per month. What else do you need?"
+        ],
+        "sql": [
+          "SELECT c.status, c.section, c.component_id, c.field, c.blocking, c.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 20)) AS c"
+        ]
+      },
+      {
+        "id": "6a3271ae2de551eab466e5dab0cb9452",
+        "question": [
+          "Explain assumptions and pending costs for this validated JSON: {\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}"
+        ],
+        "sql": [
+          "SELECT d.section, d.component_id, d.item, d.detail FROM __FQ__.dcp_calc_details(p_request => '{\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}') AS d"
+        ]
+      },
+      {
+        "id": "6abe2cfa730b57978a5970ced87890e4",
+        "question": [
+          "For the validated JSON, show costs by engine: {\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}"
+        ],
+        "sql": [
+          "SELECT li.scenario, li.engine, li.recurrence, SUM(CASE WHEN li.treatment = 'INCLUDED' THEN li.cost_usd END) AS priced_subtotal_usd, SUM(CASE WHEN li.treatment = 'PENDING' THEN 1 ELSE 0 END) AS pending_items FROM __FQ__.dcp_calc_line_items(p_request => '{\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}') AS li GROUP BY li.scenario, li.engine, li.recurrence ORDER BY li.scenario, li.engine, li.recurrence"
+        ]
+      },
+      {
+        "id": "763c8cb931ea5cb482c7632d889e6d7f",
+        "question": [
+          "Estimate the named SEND_US01 preset"
+        ],
+        "sql": [
+          "SELECT t.scenario, t.recurring_monthly_usd, t.one_time_usd, t.pending_items, t.pending_detail, t.status, t.area_states, t.request_status, t.rate_card_source, t.disclaimer FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01') AS t"
+        ]
+      },
+      {
+        "id": "9998f517cda150c5b4dce713c3e70e3b",
+        "question": [
+          "Validate my confirmed workload before calculating: {\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}"
+        ],
+        "sql": [
+          "SELECT c.status, c.section, c.component_id, c.field, c.blocking, c.question FROM __FQ__.dcp_check_inputs(p_request => '{\"use_case_id\":\"BATCH_EXAMPLE\",\"use_case_name\":\"Batch example\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}') AS c"
+        ]
+      },
+      {
+        "id": "9d745bda513854f29f7deb999ceccebd",
+        "question": [
+          "Validate this new JSON before estimating: {\"use_case_id\":\"NEW\",\"use_case_name\":\"Batch\",\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2}]}"
+        ],
+        "sql": [
+          "SELECT c.status, c.section, c.component_id, c.field, c.blocking, c.question FROM __FQ__.dcp_check_inputs(p_request => '{\"use_case_id\":\"NEW\",\"use_case_name\":\"Batch\",\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2}]}') AS c"
+        ]
+      }
+    ]
+  }
+}

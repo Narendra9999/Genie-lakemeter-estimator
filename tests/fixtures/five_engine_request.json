@@ -1,0 +1,43 @@
+{
+  "use_case_id": "ENGINE-DEMO",
+  "use_case_name": "Five engine example",
+  "scenarios": [
+    "EXPECTED"
+  ],
+  "processing": [
+    {
+      "component_id": "B1",
+      "name": "Batch",
+      "workload_type": "SCHEDULED_BATCH",
+      "runtime_hours_expected": 2,
+      "runs_per_month": 20
+    }
+  ],
+  "sql": {
+    "component_id": "Q1",
+    "name": "Reporting",
+    "concurrent_users": 10
+  },
+  "transfer": {
+    "daily_gb_expected": 5,
+    "initial_transfer_gb": 100
+  },
+  "storage": {
+    "retained_tb": 1,
+    "files_per_day": 100,
+    "s3_read_requests_per_file": 2
+  },
+  "model_endpoints": [
+    {
+      "component_id": "M1",
+      "model": "gpt-5.4-nano",
+      "role": "Summarize",
+      "calls_per_day": 100,
+      "input_tokens_expected": 1000,
+      "output_tokens_expected": 100
+    }
+  ],
+  "_areas": {
+    "one_time_model_jobs": "NOT_APPLICABLE"
+  }
+}

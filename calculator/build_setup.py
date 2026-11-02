@@ -13,6 +13,9 @@ CALC_SQL = rd("sql", "06_dcp_calculator.sql").strip()
 GOV_SQL = "\n".join(l for l in rd("sql", "09_governed_prices.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
 SIZING_SQL = "\n".join(l for l in rd("sql", "08_workload_sizing.sql").split("\n") if not l.startswith("--") or l == "-- @@").strip()
 CATALOG_SQL = rd("sql", "10_product_catalog.sql").strip()
+CAPABILITIES_SQL = rd("sql", "11_functional_capabilities.sql").strip()
+ENGINE_INPUTS_SQL = rd("sql", "12_dcp_engine_inputs.sql").strip()
+WORKLOAD_INPUTS_SQL = rd("sql", "13_workload_inputs.sql").strip()
 SEED = json.loads(rd("calculator", "rate_registry_seed.json"))
 SPACE = json.loads(rd("genie", "space_definition.json"))
 SPACE["text_instructions"] = [rd("genie", "instructions.md").strip()]
@@ -28,7 +31,7 @@ nb = f'''# Databricks notebook source
 # MAGIC | Step | Creates |
 # MAGIC |---|---|
 # MAGIC | 1 | Schema, and the 10 Lakemeter pricing reference tables from the pricing CSV folder |
-# MAGIC | 2 | 29 Lakemeter functions, workload sizing, and the queryable `estimator_catalog()` product coverage function |
+# MAGIC | 2 | Lakemeter functions, workload sizing, `estimator_catalog()`, and the category/input reference tables |
 # MAGIC | 3 | The **DCP Smart Estimation Calculator v{V}** as Unity Catalog functions (`dcp_calc`, `dcp_calc_totals`, `dcp_calc_line_items`, `dcp_calc_details`, `dcp_request`) |
 # MAGIC | 4 | Rates: `ref_dbu_price_card` (every Lakemeter and sizing DBU price) and `dcp_rate_card` (DCP calculator), both from `system.billing.account_prices` (governed) or `list_prices`; no price = PENDING |
 # MAGIC | 5 | `dcp_requests`: named use cases (bundled presets, plus any request JSON files in `requests_path`) |
@@ -133,8 +136,11 @@ print("Workload sizing created: ref_sizing_profiles, ref_sizing_node_families, s
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2b. Product coverage catalog
-# MAGIC This queryable catalog helps Genie discover supported and unavailable categories; it is not a pricing source.
+# MAGIC ## 2b. Category discovery, DCP inputs and detailed product coverage
+# MAGIC Creates Cost Estimator Functional Capabilities (28 records) and DCP Engine Input Requirements (62 fields).
+# MAGIC These tables guide category selection and input collection; estimator_catalog() supplies detailed coverage.
+# MAGIC These are managed references regenerated on setup. Do not hand-edit their rows; update the source mappings/schema.
+# MAGIC Native Genie follow-up wording remains best-effort; instructions do not enforce a conversation state machine.
 
 # COMMAND ----------
 
@@ -142,6 +148,15 @@ CATALOG_SQL = {json.dumps(CATALOG_SQL)}
 for s in [s.strip() for s in CATALOG_SQL.split("\\n-- @@\\n") if s.strip()]:
     spark.sql(s.replace("__FQ__", FQ))
 print("Product coverage catalog created")
+CAPABILITIES_SQL = {json.dumps(CAPABILITIES_SQL)}
+spark.sql(CAPABILITIES_SQL.replace("__FQ__", FQ))
+print("Cost Estimator Functional Capabilities reference table created")
+ENGINE_INPUTS_SQL = {json.dumps(ENGINE_INPUTS_SQL)}
+spark.sql(ENGINE_INPUTS_SQL.replace("__FQ__", FQ))
+print("DCP Engine Input Requirements reference table created")
+WORKLOAD_INPUTS_SQL = {json.dumps(WORKLOAD_INPUTS_SQL)}
+spark.sql(WORKLOAD_INPUTS_SQL.replace("__FQ__", FQ))
+print("Workload-specific estimate input map created")
 
 # COMMAND ----------
 
@@ -260,6 +275,9 @@ serialized = {{
   "benchmarks": {{"questions": sorted([{{"id": nid(), "question": b["question"], "answer": [{{"format": "SQL", "content": b["sql"]}}],
                                       **({{"evaluation_note": b["evaluation_note"]}} if b.get("evaluation_note") else {{}})}}
                                      for b in D.get("benchmarks", [])], key=lambda x: x["id"])}}}}
+# Preserve every exported Genie surface and asset ID; sub(SPACE) remaps the schema.
+if D.get("serialized_space") is not None:
+    serialized = D["serialized_space"]
 body = {{"warehouse_id": W["warehouse_id"], "title": W["space_title"], "description": D["description"], "serialized_space": json.dumps(serialized)}}
 if not W["space_id"]:
     # No id given: reuse the agent with the same title, so re-running this notebook (e.g. as a bundle job) never creates duplicates

@@ -167,7 +167,7 @@ QUESTIONS = {
     "runtime_hours_expected": "How many hours does each run take (optionally a low and high)?",
     "runtime_hours_low": "What is the shortest runtime per run, in hours?",
     "runtime_hours_high": "What is the longest runtime per run, in hours?",
-    "runs_per_month": "How many times does it run per month?",
+    "runs_per_month": "How many runs per month?",
     "concurrent_users": "How many concurrent SQL users are there?",
     "daily_gb_expected": "How many GB move through DataSync per day (0 if there is only a one-time migration)?",
     "daily_gb_low": "What is the lowest daily DataSync volume, in GB?",
