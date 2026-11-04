@@ -1,6 +1,16 @@
 {
   "modules": [
-    {"name": "dcp_estimator", "path": "notebooks/dcp_estimator.py"},
-    {"name": "dcp_adapter", "path": "calculator/dcp_adapter.py"}
+    {
+      "name": "dcp_estimator",
+      "path": "notebooks/dcp_estimator.py"
+    },
+    {
+      "name": "aws_pricing",
+      "path": "calculator/aws_rate_lookup.py"
+    },
+    {
+      "name": "dcp_adapter",
+      "path": "calculator/dcp_adapter.py"
+    }
   ]
 }

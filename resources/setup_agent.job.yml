@@ -12,6 +12,9 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
+              aws_pricing_catalog: ${var.aws_pricing_catalog}
+              aws_pricing_schema: ${var.aws_pricing_schema}
+              aws_pricing_table_name: ${var.aws_pricing_table_name}
               warehouse_id: ${var.warehouse_id}
               rate_source: ${var.rate_source}
               sku_region: ${var.sku_region}

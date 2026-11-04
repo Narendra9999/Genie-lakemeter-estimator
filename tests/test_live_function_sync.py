@@ -67,7 +67,7 @@ class LiveFunctionSyncTests(unittest.TestCase):
                     body = re.split(r"\bRETURN\s+", tail, maxsplit=1)[1].strip().rstrip(";")
                 expected = live["routine_definition"].strip()
                 # Unity Catalog wraps this scalar subquery in an additional redundant pair.
-                if name == "get_dbu_price":
+                if name in ("get_dbu_price", "dcp_rates_json"):
                     while body.startswith("(") and body.endswith(")"): body = body[1:-1].strip()
                     while expected.startswith("(") and expected.endswith(")"): expected = expected[1:-1].strip()
                 self.assertEqual(normalize(body), normalize(expected))

@@ -4,11 +4,12 @@ It does no math. It only:
   * builds the EstimateRequest: a preset ({"preset": "SEND_US01", "preset_args": {...}}) or a plain request JSON,
   * applies what-if overrides: preset keyword arguments (e.g. {"migration_gb": 8000}) and/or dotted paths on the
     request (e.g. {"transfer.daily_gb_high": -1}, {"processing[C02].runs_per_month": 4}),
-  * builds the calculator's RegistryPricingProvider from the rate card (dcp_rate_card) - nothing else,
+  * builds the calculator's RegistryPricingProvider from dcp_rate_card (Databricks) and dated aws_pricing_list rows,
   * calls estimate() and returns result.to_dict() reshaped into lists for SQL, plus format_summary().
 Validation errors (ValueError) come back as status REJECTED with the calculator's own messages.
 """
 import json
+from aws_pricing import apply_aws_rates
 
 DISCLAIMER = "Internal planning estimate, not an invoice or committed run rate."
 # "Core monthly" in the DCP output format: Databricks processing + SQL + recurring DataSync (no S3/KMS, no model API)
@@ -134,6 +135,7 @@ def run(m, request, rates, overrides=None, named=None):
     try:
         req = json.loads(request) if isinstance(request, str) else request
         rt = json.loads(rates) if isinstance(rates, str) and rates else (rates or {})
+        rt = apply_aws_rates(req, rt)
         ov = json.loads(overrides) if isinstance(overrides, str) and overrides else (overrides or {})
         if not isinstance(req, dict):
             raise ValueError(f"Request must be a JSON object, got {type(req).__name__}.")

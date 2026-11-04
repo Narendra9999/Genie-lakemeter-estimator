@@ -1,5 +1,5 @@
 # Live DCP configuration
 
-Synced from agent `01f1d6efcecd1620b04cf487817675b7` in `fevm-naren`, updated `2026-11-04T19:29:25.049Z`. All nine registrations, instructions, SQL examples, snippets, table metadata, sample questions, benchmarks and asset IDs are preserved. No registration pruning. All nine live function bodies, signatures and descriptions match source. The exact portable configuration is `live_agent_snapshot.json`; instruction string chunking is normalized only. The source agent and UC objects are unchanged.
+AWS pricing additions deployed to agent `01f1d6efcecd1620b04cf487817675b7` in `fevm-naren` and read back successfully. All nine existing registrations, SQL examples, snippets, benchmarks and asset IDs were preserved. Added `aws_pricing_list`, two pricing helpers, and pricing guidance using confirmed inclusive validity windows. Eleven functions are now registered. Updated calculator functions and both helpers were read back into `live_function_definitions.json`. Original pre-change agent export is saved at `/tmp/aws-agent-before.json`.
 
-The latest edit removes the prior out-of-scope sentence that excluded component breakdowns. Earlier validation evidence describes the older configuration, not this revision. This sync was checked locally; no new agent or live conversations were launched.
+See [AWS pricing](../AWS_PRICING.md) for coverage, provenance and dated requests.

@@ -23,6 +23,20 @@ class SetupArtifactTests(unittest.TestCase):
         self.assertNotIn('FUNCTIONS_SQL', values)
         self.assertNotIn('CATALOG_SQL', values)
 
+    def test_setup_uses_existing_aws_table_without_loading_data(self):
+        source = (ROOT/'setup_genie_dcp_agent.py').read_text()
+        lookup = ast.literal_eval(self.assignments()['AWS_PRICING_SQL'])
+        self.assertEqual(lookup, (ROOT/'sql/14_aws_pricing.sql').read_text().split('\n-- @@\n', 1)[1].strip())
+        self.assertNotIn('CREATE TABLE', lookup)
+        self.assertNotIn('AWS_PRICING_ROWS', source)
+        self.assertNotIn('dcp_aws_pricing_upload', source)
+        self.assertNotIn('data/aws_pricing_list.csv', (ROOT/'calculator/build_setup.py').read_text())
+        for field in ('aws_pricing_catalog','aws_pricing_schema','aws_pricing_table_name'):
+            self.assertIn('dbutils.widgets.text("'+field+'"', source)
+            self.assertIn(field+': ${var.'+field+'}', (ROOT/'resources/setup_agent.job.yml').read_text())
+        self.assertIn('statement.replace("__FQ__.aws_pricing_list", AWS_PRICING_SOURCE)', source)
+        self.assertIn('value.replace("__FQ__.aws_pricing_list", AWS_PRICING_TABLE)', source)
+
     def test_agent_payload_and_policy_are_preserved(self):
         call = self.assignments()['SPACE']
         embedded = json.loads(ast.literal_eval(call.args[0]))
@@ -33,7 +47,7 @@ class SetupArtifactTests(unittest.TestCase):
         self.assertEqual(embedded['text_instructions'], [(ROOT/'genie/instructions.md').read_text().strip()])
         self.assertEqual(embedded['tables'], export['data_sources']['tables'])
         self.assertTrue(all(f.rsplit('.',1)[-1].startswith('dcp_') for f in embedded['sql_functions']))
-        self.assertEqual({t['identifier'] for t in embedded['tables']}, {'__FQ__.dcp_requests','__FQ__.dcp_rate_card','__FQ__.dcp_engine_input_requirements'})
+        self.assertEqual({t['identifier'] for t in embedded['tables']}, {'__FQ__.aws_pricing_list','__FQ__.dcp_requests','__FQ__.dcp_rate_card','__FQ__.dcp_engine_input_requirements'})
         allowed = {f.rsplit('.',1)[-1] for f in embedded['sql_functions']} | {t['identifier'].rsplit('.',1)[-1] for t in embedded['tables']}
         for example in embedded['example_question_sqls']:
             for sql in example['sql']:

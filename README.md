@@ -16,7 +16,7 @@ Genie collects facts, asks for missing inputs and explicit area states, and retu
 
 - `notebooks/dcp_estimator.py`: calculator core and named presets.
 - `calculator/dcp_adapter.py`: request validation and SQL result adaptation.
-- `calculator/build_sql.py`: generates the nine DCP UC functions and rate/request tables.
+- `calculator/build_sql.py`: generates the DCP UC functions and rate/request tables.
 - `calculator/build_engine_inputs.py`: generates the input-schema reference for the five engines.
 - `calculator/rate_refresh.py`: loads DCP Databricks rates from system billing.
 - `genie/`: DCP-only instructions, SQL examples, function snapshots and benchmarks.
@@ -44,15 +44,18 @@ Import `setup_genie_dcp_agent.py` into your workspace and run it with:
 | --- | --- |
 | `catalog` | Target UC catalog |
 | `schema` | Target schema; defaults to `dcp_estimator` |
+| `aws_pricing_catalog` | Catalog containing your existing AWS pricing table |
+| `aws_pricing_schema` | Schema containing your existing AWS pricing table |
+| `aws_pricing_table_name` | Existing table name; defaults to `aws_pricing_list` |
 | `warehouse_id` | Genie-compatible SQL warehouse ID |
 | `rate_source` | `ACCOUNT_PRICES` for account pricing; `LIST_PRICES` for reference pricing |
 | `sku_region` | Billing SKU suffix; defaults to `US_EAST_N_VIRGINIA` |
 | `space_id` | Blank creates a new agent; provide the returned ID on subsequent runs to update it |
 | `space_title` | Defaults to `DCP Cost Estimator` |
 
-The installer creates the schema, DCP functions, rate card, input reference and named requests, then creates or updates the specified agent. The installer principal needs permission to create these UC objects, read the selected system billing table, and use the warehouse. Share the agent and grant intended users access to its catalog, schema, tables and functions through your workspace's normal access-management process.
+The installer validates read access and the twelve required columns of your existing AWS pricing table. It neither creates nor imports AWS pricing data. It creates the schema, DCP functions, rate card, input reference and named requests, then creates or updates the specified agent. The installer principal needs permission to create these UC objects, read the selected system billing table, and use the warehouse. Share the agent and grant intended users access to its catalog, schema, tables and functions through your workspace's normal access-management process.
 
-Databricks prices come only from the selected billing table. Exactly one current USD/DBU price is required per SKU; missing or ambiguous prices remain `PENDING`. `LIST_PRICES` is labeled `REFERENCE_ONLY`. AWS prices retain the calculator registry's source/status. The provided rates and requests are planning inputs, not invoice guarantees.
+Databricks prices come only from the selected billing table. Exactly one current USD/DBU price is required per SKU; missing or ambiguous prices remain `PENDING`. `LIST_PRICES` is labeled `REFERENCE_ONLY`. AWS prices come from `aws_pricing_list`, default to billed rates, and preserve the uploaded Cloudability reference status. Rate validity includes both start and end dates; uncovered dates remain pending. See [AWS pricing](AWS_PRICING.md) for supported units, source data and dated list/billed comparisons. The provided rates and requests are planning inputs, not invoice guarantees.
 
 ## Deploy with a bundle
 
@@ -60,13 +63,13 @@ Use an explicitly selected Databricks profile:
 
 ```bash
 databricks bundle validate --profile YOUR_PROFILE -t dev \
-  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE
+  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE,aws_pricing_catalog=AWS_CATALOG,aws_pricing_schema=AWS_SCHEMA
 
 databricks bundle deploy --profile YOUR_PROFILE -t dev \
-  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE
+  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE,aws_pricing_catalog=AWS_CATALOG,aws_pricing_schema=AWS_SCHEMA
 
 databricks bundle run setup_agent --profile YOUR_PROFILE -t dev \
-  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE
+  --var catalog=YOUR_CATALOG,warehouse_id=YOUR_WAREHOUSE,aws_pricing_catalog=AWS_CATALOG,aws_pricing_schema=AWS_SCHEMA
 ```
 
 The bundle contains only `setup_agent` and `rate_refresh`. Rate refresh is paused by default; enable it with `schedule_pause_status=UNPAUSED` when wanted. For later setup runs, include `space_id=YOUR_AGENT_ID` so the same agent is updated. Production uses the `prod` target and requires `run_as_service_principal`.

@@ -5,6 +5,7 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 SCRIPTS = (
+    "build_aws_pricing.py",
     "build_sql.py",
     "build_engine_inputs.py",
     "build_notebook.py",

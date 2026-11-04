@@ -159,20 +159,28 @@ RETURN to_json(named_struct(
       'input_tokens_low', p_one_time_input_tokens_low, 'input_tokens_high', p_one_time_input_tokens_high,
       'output_tokens_low', p_one_time_output_tokens_low, 'output_tokens_high', p_one_time_output_tokens_high,
       'api_calls', p_one_time_api_calls, 'serving_mode', coalesce(upper({N('p_one_time_serving_mode')}), 'PAY_PER_TOKEN'))) END))""")
+stmts.append("""CREATE OR REPLACE FUNCTION __FQ__.dcp_rates_json()
+RETURNS STRING
+COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units, confirmed validity windows and BILLED or LIST basis. No AWS registry fallback.'
+RETURN
+ SELECT to_json(named_struct('as_of',cast(current_date() AS STRING),
+ 'source','dcp_rate_card (Databricks); aws_pricing_list (AWS)',
+ 'rows',(SELECT collect_list(named_struct('provider',provider,'service',service,'sku',sku,'unit',unit,'region',region,
+ 'rate',rate,'status',status,'source',source,'effective_start',effective_start,'effective_end',effective_end,
+ 'observed_rate',observed_rate,'notes',coalesce(notes,''))) FROM __FQ__.dcp_rate_card WHERE provider <> 'AWS'),
+ 'aws_rows',(SELECT collect_list(named_struct('service_name',service_name,'region',region,'usage_type',usage_type,
+ 's3_storage_class',s3_storage_class,'charge_type',charge_type,'price_unit',price_unit,'list_price',list_price,
+ 'billed_rate',billed_rate,'rate_status',rate_status,'period_start',cast(period_start AS STRING),'period_end',cast(period_end AS STRING),'source_row_id',source_row_id))
+ FROM __FQ__.aws_pricing_list WHERE region='us-east-1' AND usage_type IN
+ ('USE1-Transferred-Bytes','TimedStorage-ByteHrs','Requests-Tier1','Requests-Tier2','us-east-1-KMS-Requests','us-east-1-KMS-Keys'))))""")
 stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_calc_run({ARGS})
 RETURNS TABLE(use_case_id STRING, result STRING)
-COMMENT 'Internal: resolve the request (named use case by exact id/name or unique prefix, or ad-hoc), attach the rate card, and run the DCP calculator once. {WHO}'
+COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.as_of selects a AWS rate-validity date and .basis selects BILLED (default) or LIST. A missing current AWS rate stays PENDING; never substitute registry or stale prices. {WHO}'
 RETURN
-  WITH {RESOLVE},
-  rates AS (
-    SELECT to_json(named_struct(
-             'as_of', CAST(current_date() AS STRING),
-             'source', array_join(array_sort(collect_set(CASE WHEN provider = 'DATABRICKS' AND unit = 'DBU' AND rate IS NOT NULL THEN source END)), ', '),
-             'rows', collect_list(named_struct('provider', provider, 'service', service, 'sku', sku, 'unit', unit, 'region', region,
-                       'rate', rate, 'status', status, 'source', source, 'effective_start', effective_start,
-                       'effective_end', effective_end, 'observed_rate', observed_rate, 'notes', coalesce(notes, ''))))) AS j
-    FROM __FQ__.dcp_rate_card)
-  SELECT req.use_case_id, __FQ__.dcp_calc(req.r, rates.j, req.ov, req.named) AS result FROM req CROSS JOIN rates""")
+ WITH {RESOLVE}
+ SELECT req.use_case_id, __FQ__.dcp_calc(req.r,
+ __FQ__.dcp_rates_json(),
+ req.ov,req.named) AS result FROM req""")
 stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_check_inputs({ARGS})
 RETURNS TABLE(use_case_id STRING, status STRING, section STRING, component_id STRING, field STRING, issue STRING, blocking BOOLEAN,
               expected STRING, received STRING, question STRING)

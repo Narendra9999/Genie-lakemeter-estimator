@@ -22,25 +22,42 @@ from databricks.sdk import WorkspaceClient
 
 dbutils.widgets.text("catalog", "", "Catalog")
 dbutils.widgets.text("schema", "dcp_estimator", "Schema")
+dbutils.widgets.text("aws_pricing_catalog", "", "AWS pricing catalog")
+dbutils.widgets.text("aws_pricing_schema", "", "AWS pricing schema")
+dbutils.widgets.text("aws_pricing_table_name", "aws_pricing_list", "Existing AWS pricing table name")
 dbutils.widgets.text("warehouse_id", "", "SQL warehouse ID")
 dbutils.widgets.dropdown("rate_source", "ACCOUNT_PRICES", ["ACCOUNT_PRICES", "LIST_PRICES"], "Billing source")
 dbutils.widgets.text("sku_region", "US_EAST_N_VIRGINIA", "Billing SKU suffix")
 dbutils.widgets.text("space_id", "", "Existing agent ID to update; blank creates")
 dbutils.widgets.text("space_title", "DCP Cost Estimator", "Agent title")
-W = {key: dbutils.widgets.get(key).strip() for key in ("catalog", "schema", "warehouse_id", "rate_source", "sku_region", "space_id", "space_title")}
+W = {key: dbutils.widgets.get(key).strip() for key in ("aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name", "catalog", "schema", "warehouse_id", "rate_source", "sku_region", "space_id", "space_title")}
 if not W["catalog"] or not W["warehouse_id"]:
     raise ValueError("Provide catalog and warehouse_id")
-if not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", W[key]) for key in ("catalog", "schema")):
-    raise ValueError("Use simple SQL identifiers for catalog and schema")
+if not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", W[key]) for key in ("catalog", "schema", "aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name")):
+    raise ValueError("Provide simple SQL identifiers for target catalog/schema and all three AWS pricing fields")
 FQ = W["catalog"] + "." + W["schema"]
+AWS_PRICING_TABLE = ".".join(W[key] for key in ("aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name"))
+# Read-only validation before creating calculator objects. Never load or mutate source pricing.
+aws_columns = set(spark.table(AWS_PRICING_TABLE).columns)
+aws_required = {"service_name", "region", "usage_type", "usage_quantity_unit", "s3_storage_class", "charge_type", "price_unit", "list_price", "billed_rate", "rate_status", "period_start", "period_end"}
+if aws_required - aws_columns:
+    raise ValueError("AWS pricing table missing columns: " + ", ".join(sorted(aws_required - aws_columns)))
+# Existing twelve-column tables need no provenance schema changes.
+AWS_PRICING_SOURCE = AWS_PRICING_TABLE if "source_row_id" in aws_columns else "(SELECT *, sha2(to_json(struct(*)), 256) AS source_row_id FROM " + AWS_PRICING_TABLE + ")"
+def deployment_sql(statement):
+    return statement.replace("__FQ__.aws_pricing_list", AWS_PRICING_SOURCE).replace("__FQ__", FQ)
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {FQ}")
 
 # COMMAND ----------
 '''
+# The source table is externally managed; install only the lookup function.
+aws_lookup = rd('sql/14_aws_pricing.sql').split('\n-- @@\n', 1)[1].strip()
+notebook += 'AWS_PRICING_SQL = ' + repr(aws_lookup) + '\n'
+notebook += 'spark.sql(deployment_sql(AWS_PRICING_SQL))\n\n# COMMAND ----------\n'
 notebook += 'CALC_SQL = ' + repr(rd('sql/06_dcp_calculator.sql').strip()) + '\n'
 notebook += 'ENGINE_INPUTS_SQL = ' + repr(rd('sql/12_dcp_engine_inputs.sql').strip()) + '\n'
-notebook += '''for statement in CALC_SQL.replace("__FQ__", FQ).split("\\n-- @@\\n"):
-    if statement.strip(): spark.sql(statement)
+notebook += '''for statement in CALC_SQL.split("\\n-- @@\\n"):
+    if statement.strip(): spark.sql(deployment_sql(statement))
 spark.sql(ENGINE_INPUTS_SQL.replace("__FQ__", FQ))
 
 # COMMAND ----------
@@ -61,11 +78,12 @@ WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *""")
 '''
 notebook += 'SPACE = json.loads(' + repr(json.dumps(space)) + ')\n'
 notebook += '''def substitute(value):
-    if isinstance(value, str): return value.replace("__FQ__", FQ)
+    if isinstance(value, str): return value.replace("__FQ__.aws_pricing_list", AWS_PRICING_TABLE).replace("__FQ__", FQ)
     if isinstance(value, list): return [substitute(item) for item in value]
     if isinstance(value, dict): return {key: substitute(item) for key, item in value.items()}
     return value
 D = substitute(SPACE)
+D["serialized_space"]["data_sources"]["tables"].sort(key=lambda table: table["identifier"])
 body = {"warehouse_id": W["warehouse_id"], "title": W["space_title"], "description": D["description"], "serialized_space": json.dumps(D["serialized_space"])}
 client = WorkspaceClient()
 if W["space_id"]:

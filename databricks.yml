@@ -10,6 +10,13 @@ variables:
   schema:
     description: DCP schema
     default: dcp_estimator
+  aws_pricing_catalog:
+    description: Catalog containing the existing AWS pricing table
+  aws_pricing_schema:
+    description: Schema containing the existing AWS pricing table
+  aws_pricing_table_name:
+    description: Existing AWS pricing table name (read only)
+    default: aws_pricing_list
   warehouse_id:
     description: Genie-compatible SQL warehouse ID
   rate_source:
