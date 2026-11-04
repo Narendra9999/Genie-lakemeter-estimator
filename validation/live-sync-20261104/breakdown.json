@@ -1,0 +1,148 @@
+[
+  {
+    "response": {
+      "id": "01f1d8840ae81613abd3295153fd2496",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819705.548,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "reasoning",
+      "id": "pub_msg_c75052a62e394ec4",
+      "status": "completed",
+      "content": [
+        {
+          "type": "reasoning_text",
+          "text": "This is per-component cost breakdown, which falls outside the room's defined scope (line-item/component-level breakdowns aren't part of what I'm set up to report). Let me clarify what I can offer instead."
+        }
+      ],
+      "summary": [],
+      "metadata": {
+        "message_id": "01f1d8840ae81613abd3295153fd2496"
+      }
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "reasoning",
+      "id": "pub_msg_c75052a62e394ec4",
+      "status": "completed",
+      "content": [
+        {
+          "type": "reasoning_text",
+          "text": "This is per-component cost breakdown, which falls outside the room's defined scope (line-item/component-level breakdowns aren't part of what I'm set up to report). Let me clarify what I can offer instead."
+        }
+      ],
+      "summary": [],
+      "metadata": {
+        "message_id": "01f1d8840ae81613abd3295153fd2496"
+      }
+    },
+    "sequence_number": 2
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 1,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## Per-Component Breakdown \u2014 Out of Scope\n\nA per-component cost breakdown isn't something I can provide here \u2014 this tool is scoped to totals (LOW/EXPECTED/HIGH, core/recurring/annual/one-time), confidence, assumptions, pending items, and scope explanations, not itemized line-by-line cost breakdowns per component.\n\nFor the SYNC_BATCH estimate, I can re-confirm the top-line figures already shown: **$18.00/month** (EXPECTED), all attributed to the single processing component B1, with LOW confidence due to reliance on the planning-default DBU/hour assumption. Since there's only one included component in this request, the total *is* effectively B1's cost \u2014 but I can't produce a multi-component itemized table beyond that.\n\nIf you have additional components (e.g., SQL, transfer, storage) to include, I can calculate a new combined total and explain its confidence/assumptions the same way.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_012JbUHAkTYABkbjm5xFPf9C",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d8840ae81613abd3295153fd2496"
+      },
+      "created_at": 1793819714.222,
+      "completed_at": 1793819714.222
+    },
+    "sequence_number": 3
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 1,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## Per-Component Breakdown \u2014 Out of Scope\n\nA per-component cost breakdown isn't something I can provide here \u2014 this tool is scoped to totals (LOW/EXPECTED/HIGH, core/recurring/annual/one-time), confidence, assumptions, pending items, and scope explanations, not itemized line-by-line cost breakdowns per component.\n\nFor the SYNC_BATCH estimate, I can re-confirm the top-line figures already shown: **$18.00/month** (EXPECTED), all attributed to the single processing component B1, with LOW confidence due to reliance on the planning-default DBU/hour assumption. Since there's only one included component in this request, the total *is* effectively B1's cost \u2014 but I can't produce a multi-component itemized table beyond that.\n\nIf you have additional components (e.g., SQL, transfer, storage) to include, I can calculate a new combined total and explain its confidence/assumptions the same way.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_012JbUHAkTYABkbjm5xFPf9C",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d8840ae81613abd3295153fd2496"
+      },
+      "created_at": 1793819714.222,
+      "completed_at": 1793819714.222
+    },
+    "sequence_number": 4
+  },
+  {
+    "response": {
+      "id": "01f1d8840ae81613abd3295153fd2496",
+      "status": "completed",
+      "output": [
+        {
+          "type": "reasoning",
+          "id": "pub_msg_c75052a62e394ec4",
+          "status": "completed",
+          "content": [
+            {
+              "type": "reasoning_text",
+              "text": "This is per-component cost breakdown, which falls outside the room's defined scope (line-item/component-level breakdowns aren't part of what I'm set up to report). Let me clarify what I can offer instead."
+            }
+          ],
+          "summary": [],
+          "metadata": {
+            "message_id": "01f1d8840ae81613abd3295153fd2496"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "## Per-Component Breakdown \u2014 Out of Scope\n\nA per-component cost breakdown isn't something I can provide here \u2014 this tool is scoped to totals (LOW/EXPECTED/HIGH, core/recurring/annual/one-time), confidence, assumptions, pending items, and scope explanations, not itemized line-by-line cost breakdowns per component.\n\nFor the SYNC_BATCH estimate, I can re-confirm the top-line figures already shown: **$18.00/month** (EXPECTED), all attributed to the single processing component B1, with LOW confidence due to reliance on the planning-default DBU/hour assumption. Since there's only one included component in this request, the total *is* effectively B1's cost \u2014 but I can't produce a multi-component itemized table beyond that.\n\nIf you have additional components (e.g., SQL, transfer, storage) to include, I can calculate a new combined total and explain its confidence/assumptions the same way.",
+              "annotations": []
+            }
+          ],
+          "id": "pub_toolu_bdrk_012JbUHAkTYABkbjm5xFPf9C",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d8840ae81613abd3295153fd2496"
+          },
+          "created_at": 1793819714.222,
+          "completed_at": 1793819714.222
+        }
+      ],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819705.548,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 5,
+    "type": "response.completed"
+  }
+]

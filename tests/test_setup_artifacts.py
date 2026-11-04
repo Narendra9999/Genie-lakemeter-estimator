@@ -38,7 +38,7 @@ class SetupArtifactTests(unittest.TestCase):
         for example in embedded['example_question_sqls']:
             for sql in example['sql']:
                 self.assertLessEqual(set(re.findall(r'__FQ__\.(\w+)', sql.replace('`',''))), allowed)
-        self.assertEqual(export['instructions']['join_specs'], [])
+        self.assertEqual(export['instructions'].get('join_specs', []), [])
 
     def test_rate_refresh_source_and_seed_are_shared(self):
         source = (ROOT/'calculator/rate_refresh.py').read_text()
@@ -47,3 +47,13 @@ class SetupArtifactTests(unittest.TestCase):
             self.assertIn(source, (ROOT/path).read_text())
             call = self.assignments(path)['SEED']
             self.assertEqual(json.loads(ast.literal_eval(call.args[0])), seed)
+
+    def test_live_sync_preserves_all_registrations(self):
+        source = json.loads((ROOT/'genie/live_agent_snapshot.json').read_text())
+        current = json.loads((ROOT/'genie/serialized_space.json').read_text())
+        removed = set()
+        source['instructions']['sql_functions'] = [f for f in source['instructions']['sql_functions']
+            if f['identifier'].rsplit('.', 1)[-1] not in removed]
+        for item in source['instructions']['text_instructions']:
+            item['content'] = [''.join(item['content']).strip()]
+        self.assertEqual(source, current)

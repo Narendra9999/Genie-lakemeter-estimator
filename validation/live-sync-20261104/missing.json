@@ -1,0 +1,148 @@
+[
+  {
+    "response": {
+      "id": "01f1d883e8e817bf9dfce2631a458059",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819648.506,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "reasoning",
+      "id": "pub_msg_898dc75595964847",
+      "status": "completed",
+      "content": [
+        {
+          "type": "reasoning_text",
+          "text": "The request is missing required details \u2014 I need a bit more before I can calculate this."
+        }
+      ],
+      "summary": [],
+      "metadata": {
+        "message_id": "01f1d883e8e817bf9dfce2631a458059"
+      }
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "reasoning",
+      "id": "pub_msg_898dc75595964847",
+      "status": "completed",
+      "content": [
+        {
+          "type": "reasoning_text",
+          "text": "The request is missing required details \u2014 I need a bit more before I can calculate this."
+        }
+      ],
+      "summary": [],
+      "metadata": {
+        "message_id": "01f1d883e8e817bf9dfce2631a458059"
+      }
+    },
+    "sequence_number": 2
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 1,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## More Information Needed\n\nBefore I can calculate the monthly cost for this scheduled batch workload, I need a few additional required inputs. No estimate has been calculated yet.\n\n**Processing (scheduled batch):**\n- How many runs per month does this job execute? (required \u2014 no default exists for runs per month)\n- What should the use case ID and name be (e.g. `NEW_WORKLOAD_01`, and a short business name)?\n- What component ID and name should identify this batch job?\n\n**Other calculator areas** (SQL reporting, DataSync transfer, S3/KMS storage, recurring model API, one-time model jobs): are any of these in scope for this estimate, or should they all be marked **Not Applicable**?\n\nPlease provide these values so I can calculate your estimate.\n\n*Note: a 2-hour runtime per run applies to all scenarios (LOW/EXPECTED/HIGH) unless you give separate low/high runtimes.*",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01HVmuV5fecKCifUJ53cAToE",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e817bf9dfce2631a458059"
+      },
+      "created_at": 1793819658.707,
+      "completed_at": 1793819658.707
+    },
+    "sequence_number": 3
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 1,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## More Information Needed\n\nBefore I can calculate the monthly cost for this scheduled batch workload, I need a few additional required inputs. No estimate has been calculated yet.\n\n**Processing (scheduled batch):**\n- How many runs per month does this job execute? (required \u2014 no default exists for runs per month)\n- What should the use case ID and name be (e.g. `NEW_WORKLOAD_01`, and a short business name)?\n- What component ID and name should identify this batch job?\n\n**Other calculator areas** (SQL reporting, DataSync transfer, S3/KMS storage, recurring model API, one-time model jobs): are any of these in scope for this estimate, or should they all be marked **Not Applicable**?\n\nPlease provide these values so I can calculate your estimate.\n\n*Note: a 2-hour runtime per run applies to all scenarios (LOW/EXPECTED/HIGH) unless you give separate low/high runtimes.*",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01HVmuV5fecKCifUJ53cAToE",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e817bf9dfce2631a458059"
+      },
+      "created_at": 1793819658.707,
+      "completed_at": 1793819658.707
+    },
+    "sequence_number": 4
+  },
+  {
+    "response": {
+      "id": "01f1d883e8e817bf9dfce2631a458059",
+      "status": "completed",
+      "output": [
+        {
+          "type": "reasoning",
+          "id": "pub_msg_898dc75595964847",
+          "status": "completed",
+          "content": [
+            {
+              "type": "reasoning_text",
+              "text": "The request is missing required details \u2014 I need a bit more before I can calculate this."
+            }
+          ],
+          "summary": [],
+          "metadata": {
+            "message_id": "01f1d883e8e817bf9dfce2631a458059"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "## More Information Needed\n\nBefore I can calculate the monthly cost for this scheduled batch workload, I need a few additional required inputs. No estimate has been calculated yet.\n\n**Processing (scheduled batch):**\n- How many runs per month does this job execute? (required \u2014 no default exists for runs per month)\n- What should the use case ID and name be (e.g. `NEW_WORKLOAD_01`, and a short business name)?\n- What component ID and name should identify this batch job?\n\n**Other calculator areas** (SQL reporting, DataSync transfer, S3/KMS storage, recurring model API, one-time model jobs): are any of these in scope for this estimate, or should they all be marked **Not Applicable**?\n\nPlease provide these values so I can calculate your estimate.\n\n*Note: a 2-hour runtime per run applies to all scenarios (LOW/EXPECTED/HIGH) unless you give separate low/high runtimes.*",
+              "annotations": []
+            }
+          ],
+          "id": "pub_toolu_bdrk_01HVmuV5fecKCifUJ53cAToE",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d883e8e817bf9dfce2631a458059"
+          },
+          "created_at": 1793819658.707,
+          "completed_at": 1793819658.707
+        }
+      ],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819648.506,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 5,
+    "type": "response.completed"
+  }
+]

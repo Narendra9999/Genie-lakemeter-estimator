@@ -10,7 +10,7 @@ A standalone DCP calculator and Genie agent configuration. The calculator suppor
 | S3 and KMS | Retained storage, file requests and encryption |
 | Model API | Recurring model calls and one-time token jobs |
 
-Genie collects facts, asks for missing inputs and explicit area states, and returns monthly and one-time totals. The current agent policy presents totals; component and engine breakdown functions remain available through the calculator API. An omitted category is not automatically not applicable. Missing costs stay pending rather than becoming zero.
+Genie collects facts, asks for missing inputs and explicit area states, and returns monthly and one-time totals. The agent presents totals and explains confidence, pending items and assumptions through dcp_calc_details. The line-item function is also registered; the latest live instructions no longer contain the earlier component-breakdown exclusion. An omitted category is not automatically not applicable. Missing costs stay pending rather than becoming zero.
 
 ## Code layout
 

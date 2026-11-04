@@ -1,0 +1,9 @@
+{
+  "space_id": "01f1d883dc591276a3d85615bcfc12bb",
+  "title": "DCP Calculator - live sync validation 2026-11-04",
+  "description": "Validate DCP workload inputs and scope, ask for missing facts, and calculate monthly and one-time totals for the five DCP engines.",
+  "warehouse_id": "2b169603bdabc084",
+  "etag": "e774b24061502d80025e4a18517115f5ff1d70af1bb1710752620d1fb42b563d",
+  "create_time": "2026-11-04T19:13:47.434Z",
+  "update_time": "2026-11-04T19:13:47.434Z"
+}

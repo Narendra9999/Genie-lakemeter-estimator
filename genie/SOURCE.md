@@ -1,5 +1,5 @@
-# DCP configuration source
+# Live DCP configuration
 
-This branch derives its DCP policy and function contracts from the working agent `01f1c809927f1586bbd2566786d9c455` exported on November 2, 2026. It is a DCP-only projection, not a full copy of the broader agent: only DCP functions, tables, SQL examples and benchmarks are retained. A five-engine menu replaces cross-product catalog discovery. Asset IDs for retained examples are preserved.
+Synced from agent `01f1d6efcecd1620b04cf487817675b7` in `fevm-naren`, updated `2026-11-04T19:29:25.049Z`. All nine registrations, instructions, SQL examples, snippets, table metadata, sample questions, benchmarks and asset IDs are preserved. No registration pruning. All nine live function bodies, signatures and descriptions match source. The exact portable configuration is `live_agent_snapshot.json`; instruction string chunking is normalized only. The source agent and UC objects are unchanged.
 
-The current agent policy presents monthly and one-time totals. Lower-level line-item/detail functions remain part of the calculator API and its regression tests. `live_function_definitions.json` records only the nine DCP function contracts used to validate the source and generated SQL. No live agent or workspace object was changed for this branch.
+The latest edit removes the prior out-of-scope sentence that excluded component breakdowns. Earlier validation evidence describes the older configuration, not this revision. This sync was checked locally; no new agent or live conversations were launched.

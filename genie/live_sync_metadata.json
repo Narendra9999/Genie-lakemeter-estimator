@@ -1,0 +1,10 @@
+{
+  "space_id": "01f1d6efcecd1620b04cf487817675b7",
+  "update_time": "2026-11-04T19:29:25.049Z",
+  "etag": "04c2cf93fff81f3ec8ddcad7b29648a2e9f3f203850a6ce23f80a24d76b22696",
+  "source_schema": "fevm_catalog_naren.dcp_estimator",
+  "source_profile": "fevm-naren",
+  "direction": "live_to_code",
+  "removed_local_registrations": [],
+  "source_agent_modified": false
+}

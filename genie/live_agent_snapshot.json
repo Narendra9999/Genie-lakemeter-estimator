@@ -1,0 +1,770 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {
+        "id": "03e673d7089054689fcf4c729e01c18f",
+        "question": [
+          "Estimate the named SEND_US01 preset."
+        ]
+      },
+      {
+        "id": "2350d1f685bd582ca2ccf411cf1619b4",
+        "question": [
+          "A scheduled batch takes 2 hours per run. What inputs do you still need?"
+        ]
+      },
+      {
+        "id": "5bc7bb31a974594fba6da5c042579eda",
+        "question": [
+          "What DCP engines can you estimate?"
+        ]
+      }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "identifier": "__FQ__.dcp_engine_input_requirements",
+        "description": [
+          "DCP Engine Input Requirements. After category selection filter by request_area and workload conditions, reuse known facts, and ask for missing applicable values in words, not a table alone. Include units/defaults and a labeled example if helpful. Batch/streaming use processing; Model API has recurring/one-time sections. dcp_check_inputs validates actual requests."
+        ],
+        "column_configs": [
+          {
+            "column_name": "engine",
+            "description": [
+              "One of the five DCP calculator engines. Model API has recurring and one-time request sections."
+            ],
+            "synonyms": [
+              "DCP engine",
+              "calculator area"
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          },
+          {
+            "column_name": "input_role",
+            "description": [
+              "USER_INPUT, IDENTITY, PROVENANCE or CONTEXT_ONLY. Do not ask context-only fields as cost blockers."
+            ],
+            "synonyms": [
+              "field role"
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          },
+          {
+            "column_name": "parameter_name",
+            "description": [
+              "Exact raw JSON field name, not necessarily a p_-prefixed SQL builder argument."
+            ],
+            "synonyms": [
+              "input field",
+              "parameter"
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          },
+          {
+            "column_name": "request_area",
+            "description": [
+              "processing, sql, transfer, storage, model_endpoints or one_time_model_jobs. Batch and streaming both use processing."
+            ],
+            "synonyms": [
+              "input section"
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          },
+          {
+            "column_name": "requirement",
+            "description": [
+              "Conditional requirements; SCENARIO_BOUND is needed to price that scenario. Check applies_when and use dcp_check_inputs for a concrete request."
+            ],
+            "synonyms": [
+              "required input"
+            ],
+            "enable_format_assistance": true,
+            "enable_entity_matching": true
+          }
+        ]
+      },
+      {
+        "identifier": "__FQ__.dcp_rate_card",
+        "description": [
+          "Rates the DCP calculator uses: one row per provider (DATABRICKS / AWS), sku, unit and region, with rate, status (GOVERNED, VALIDATED_OBSERVED, REFERENCE_ONLY, PENDING) and source. Databricks rows come from system.billing.account_prices (or list prices in test). Quote these; never change them."
+        ]
+      },
+      {
+        "identifier": "__FQ__.dcp_requests",
+        "description": [
+          "Named DCP use cases (one calculator request per use case; presets such as SEND_US01 and AI_RAG_MODEL_API). Use only to list use cases: SELECT use_case_id, use_case_name FROM dcp_requests. Never read request_json to calculate."
+        ]
+      }
+    ]
+  },
+  "instructions": {
+    "text_instructions": [
+      {
+        "id": "8cc94fd9e68c4459aef182a511000cea",
+        "content": [
+          "## Scope\nProduce DCP cost estimates (LOW / EXPECTED / HIGH, USD) with dcp_calc_totals for named presets (e.g. SEND_US01), pasted workload JSON, or prose. Explain estimates with dcp_calc_details (confidence, pending items, assumptions, warnings, scope, why an item is $0.00). Also answer rate (dcp_rate_card), loaded use case (dcp_requests) and required-input (dcp_engine_input_requirements) questions.\nSix calculator areas: processing, sql, transfer (DataSync), storage (S3/KMS), model_endpoints (recurring Model API) and one_time_model_jobs (one-time Model API).\n\n## Reporting terms\nCopy figures exactly as returned (USD, 2 decimals); never derive one from another.\n- Core monthly: core_monthly_usd. Recurring / all-in / monthly cost: recurring_monthly_usd. Annual / Year 2 onward: annual_usd. First-year total: first_year_usd (give one_time_usd as its one-time part when asked). One-time: one_time_usd, always shown separately.\n- If the question names one scenario, report only that one. Show STRESS only when asked, labelled an operating sensitivity, not a forecast.\n\n## Defaults and assumptions\n- Scenarios LOW, EXPECTED, HIGH; region US_EAST_1 unless the request says otherwise.\n- Rates come only from the rate card. Never ask for or substitute a DBU or AWS rate.\n- Fields with a default_value_json in dcp_engine_input_requirements apply automatically: never ask for them; list them as defaults applied.\n- Never assume a value: NULL or PENDING is never $0, notes never fill a missing value, \"daily\" never implies a run count. Area states have no default.\n\n## Reading the workload\n- Ignore _calculator_version, _purpose and evidence (provenance). notes are context only. assumptions are user overrides.\n- Build _areas (INCLUDED, EXCLUDED, UNKNOWN, NOT_APPLICABLE) from scope_included / scope_excluded and explicit user answers; the calculator reads scope only from _areas. Keep every other pasted key and value unchanged.\n- Scope text to areas: batch, jobs, pipelines, streaming, ML training, batch scoring = processing; Databricks SQL, dashboards, BI = sql; DataSync, data transfer = transfer; S3, object storage, storage requests = storage; model API calls, LLM endpoints = model_endpoints; one-time model jobs, initial indexing, embedding backfill = one_time_model_jobs. \"Model API workloads\" means both model areas.\n- Partial entries exclude only fields: \"One-time migration\" excludes initial_transfer_gb; \"KMS key and encryption costs\" excludes encrypted files and KMS keys. Leave them null or 0, don't ask, list as excluded.\n- User adds an area = INCLUDED; declines = NOT_APPLICABLE; says out of scope = EXCLUDED.\n\n## Before any query\nRun nothing, including dcp_check_inputs, while anything is missing, invalid or unresolved. Reply with questions only: no query, table or figures.\n- Required: use_case_id, use_case_name, and component_id and name for every component, plus the area's required inputs in dcp_engine_input_requirements (by request_area and applies_when). SCHEDULED_BATCH, ML_TRAINING and BATCH_SCORING need runs_per_month; CONTINUOUS_STREAMING needs neither runtime nor runs.\n- Validity (check every supplied value, even defaulted ones): numbers must be numeric and non-negative; days-per-month fields are whole numbers 0 to 31 (the calculator does not enforce this, so you must); values must fit allowed_values. Never silently correct, cap, drop or default an invalid value.\n- Area states: areas matched by a scope list are decided. For every other area, confirm it if it has values and offer it if it does not; for prose with no scope, ask the state (Included, Excluded, Unknown, Not Applicable) of each area not described. Ask when a scope entry matches no area, an area is in both lists, an excluded area or field has values, or an included area has none. If no workload is identified, ask which engines to estimate.\n\n## Calculating\n- Build the request (pasted JSON plus _areas; for prose, dcp_request passed as p_request; for presets, p_use_case with p_overrides for changes). Use named arguments only, omit unused parameters, never pass 'NULL' strings or positional JSON.\n- Run dcp_check_inputs, then dcp_calc_totals on the same request. Show figures only when request_status is OK; otherwise ask for the blocking inputs in prose without showing validation output.\n- Follow-ups: merge answers into the same request, keep earlier values, re-check corrected values, ask only what remains. Never read \"no\" or \"the rest\" without a clear referent; Unknown still needs an answer. An unresolved item stays PENDING, never $0.\n\n## Response style\nConcise prose; tables only when they help.\n- Invalid input: say no estimate can be calculated until it is corrected, then list every invalid value at once, by area, with field (and component_id), value given and why it is invalid (e.g. \"transfer_days_per_month is 45, but a month has at most 31 days\"). Then any missing values or scope questions.\n- Questions: plain language with units, grouped by area, ending \"Please provide these values so I can calculate your estimate.\" No tables or example values.\n- Estimates: one compact totals table, then brief prose on confidence and reason, area states, defaults applied, exclusions and pending items with reasons (not counted, not zero). State rate_card_source; if list prices, say figures may differ at governed account rates. End with the calculator's note that this is a planning estimate, not an invoice or committed run rate.\n- Single values, rates, yes/no and out-of-scope: one or two sentences."
+        ]
+      }
+    ],
+    "example_question_sqls": [
+      {
+        "id": "01f1d4809f2c1f9a987e50e39be898e7",
+        "question": [
+          "Final check of a pasted workload JSON after every missing value was answered in chat (scope lists mapped to _areas; 'Model API workloads' excludes both model areas; user said each file is read twice). Run only after Step 1 found nothing missing; then calculate with dcp_calc_totals."
+        ],
+        "sql": [
+          "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"INCLUDED\",\"transfer\":\"INCLUDED\",\"storage\":\"INCLUDED\",\"model_endpoints\":\"EXCLUDED\",\"one_time_model_jobs\":\"EXCLUDED\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":2},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+        ]
+      },
+      {
+        "id": "01f1d6ee8ab51ba395378f04cffc59db",
+        "question": [
+          "Follow-up after the user answered every blocking input for a pasted JSON whose scope lists were mapped to _areas (e.g. each file read twice): calculate the totals"
+        ],
+        "sql": [
+          "SELECT scenario, recurring_monthly_usd, one_time_usd, databricks_usd, aws_usd, pending_items, pending_detail, area_states, confidence, request_status, rate_card_source FROM __FQ__.dcp_calc_totals(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"INCLUDED\",\"transfer\":\"INCLUDED\",\"storage\":\"INCLUDED\",\"model_endpoints\":\"EXCLUDED\",\"one_time_model_jobs\":\"EXCLUDED\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":2},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}')"
+        ],
+        "usage_guidance": [
+          "if the user provides a workload in json format and asks for workload estimate"
+        ]
+      },
+      {
+        "id": "01f1d8701b461619a3a33340ee8388e7",
+        "question": [
+          "Show the DCP workload JSON template: which fields each area needs, their units and defaults"
+        ],
+        "sql": [
+          "SELECT inputs.request_area, inputs.parameter_name, inputs.input_role, inputs.requirement, inputs.applies_when, inputs.default_value_json, inputs.unit, inputs.question FROM __FQ__.dcp_engine_input_requirements AS inputs WHERE inputs.input_role IN ('USER_INPUT', 'IDENTITY') ORDER BY inputs.sort_order"
+        ]
+      },
+      {
+        "id": "01f1d883074514e29b2e36d13c153027",
+        "question": [
+          "Why is the confidence LOW for FIN_CLAIMS_02, and what assumptions and warnings sit behind the estimate?"
+        ],
+        "sql": [
+          "SELECT section, component_id, item, detail FROM __FQ__.dcp_calc_details(p_use_case => 'FIN_CLAIMS_02') WHERE section IN ('CONFIDENCE', 'PENDING', 'ASSUMPTION', 'WARNING')"
+        ]
+      },
+      {
+        "id": "01f1d88307451a90883249669c5ad8b6",
+        "question": [
+          "A scheduled batch runs 20 times a month for 1.5 hours per run. The other calculator areas are not applicable. What is the monthly cost?"
+        ],
+        "sql": [
+          "SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, area_states, confidence, request_status, rate_card_source FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 1.5, p_runs_per_month => 20, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+        ]
+      },
+      {
+        "id": "01f1d88307451f0a9e6177a7ba84721a",
+        "question": [
+          "500 model API calls a day on gpt-5-4 with 2,000 input and 200 output tokens per call. The other calculator areas are not applicable. Monthly cost?"
+        ],
+        "sql": [
+          "SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, area_states, confidence, request_status, rate_card_source FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 500, p_input_tokens_expected => 2000, p_output_tokens_expected => 200, p_not_applicable_areas => 'processing,sql,transfer,storage,one_time_model_jobs'))"
+        ]
+      },
+      {
+        "id": "01f1d886080d1335832568c6ce5ad4de",
+        "question": [
+          "Follow-up on a pasted workload JSON already estimated (scope mapped to _areas, each file read 5 times): give the per-component cost breakdown for every scenario"
+        ],
+        "sql": [
+          "SELECT scenario, component_id, engine, description, quantity, unit, rate, rate_status, rate_source, cost_usd, recurrence, treatment, warnings FROM __FQ__.dcp_calc_line_items(p_request => '{\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"INCLUDED\",\"transfer\":\"INCLUDED\",\"storage\":\"INCLUDED\",\"model_endpoints\":\"EXCLUDED\",\"one_time_model_jobs\":\"EXCLUDED\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":5},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{}}') ORDER BY scenario, engine, component_id"
+        ]
+      },
+      {
+        "id": "06849711483546bca90aac541b836050",
+        "question": [
+          "List the required inputs for each DCP calculator engine."
+        ],
+        "sql": [
+          "SELECT inputs.engine, inputs.request_area, inputs.parameter_name, inputs.requirement, inputs.applies_when, inputs.default_value_json, inputs.unit, inputs.question FROM __FQ__.dcp_engine_input_requirements AS inputs ORDER BY inputs.sort_order"
+        ]
+      },
+      {
+        "id": "286e5e97074544128a3f40a99d776ded",
+        "question": [
+          "What DBU rate does the DCP calculator use for SQL Pro, and what is its status?"
+        ],
+        "sql": [
+          "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%SQL_PRO%'"
+        ],
+        "usage_guidance": [
+          "If the user asks how the estimate is calculated , provide the user with rates used from the knowledge base."
+        ]
+      },
+      {
+        "id": "2bdbe191ca6049eea961b198cb9dcb45",
+        "question": [
+          "5 TB is retained in S3 with 400 files a day, none encrypted, each read twice. The other calculator areas are not applicable. Monthly cost?"
+        ],
+        "sql": [
+          "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 5, p_files_per_day => 400, p_encrypted_files_per_day => 0, p_s3_read_requests_per_file => 2, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+        ]
+      },
+      {
+        "id": "2c65c0b7c8045ad2a65b8f0567b4c264",
+        "question": [
+          "What DCP cost estimation engines are available?"
+        ],
+        "sql": [
+          "SELECT 'Processing' AS engine, 'Scheduled batch, event-driven batch, continuous streaming, ML training, batch scoring' AS workloads UNION ALL SELECT 'SQL Reporting', 'Dashboards and SQL reporting' UNION ALL SELECT 'DataSync Transfer', 'Recurring transfers and one-time migration' UNION ALL SELECT 'S3 and KMS', 'Retained storage, requests and encryption' UNION ALL SELECT 'Model API', 'Recurring endpoints and one-time model jobs'"
+        ]
+      },
+      {
+        "id": "2fed66faae364226b287b83f3c9c1e8e",
+        "question": [
+          "Which DCP use cases are loaded?"
+        ],
+        "sql": [
+          "SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests ORDER BY use_case_id"
+        ]
+      },
+      {
+        "id": "4f13d1c8205c48b19d7f6a60376c7312",
+        "question": [
+          "What rates does the DCP calculator use?"
+        ],
+        "sql": [
+          "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card ORDER BY provider, sku"
+        ]
+      },
+      {
+        "id": "72ff1f98bdf3434484d18578229fde4d",
+        "question": [
+          "We copy 3 GB a day with DataSync on 20 days a month and migrate 1,200 GB once. Processing, SQL, storage and model work are not applicable. Costs?"
+        ],
+        "sql": [
+          "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 3, p_transfer_days_per_month => 20, p_initial_transfer_gb => 1200, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+        ]
+      },
+      {
+        "id": "a658c5f6c22a49b3bd41dd92912a03e5",
+        "question": [
+          "What if SEND_US01 keeps 12 TB of data?"
+        ],
+        "sql": [
+          "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 12}')"
+        ]
+      },
+      {
+        "id": "d7148eea6f674ac88746d9b4e6f803e4",
+        "question": [
+          "Give me the DCP estimate for FIN_CLAIMS_02."
+        ],
+        "sql": [
+          "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'FIN_CLAIMS_02')"
+        ]
+      }
+    ],
+    "sql_functions": [
+      {
+        "id": "01f1d6e283061e8ba1d7fcb2ed79d1ef",
+        "identifier": "__FQ__.dcp_calc_totals"
+      },
+      {
+        "id": "01f1d6e3044b1cbd898ef44169b4f0eb",
+        "identifier": "__FQ__.dcp_calc"
+      },
+      {
+        "id": "01f1d6e30e8b1fa38d6daf4b1a216cd4",
+        "identifier": "__FQ__.dcp_calc_run"
+      },
+      {
+        "id": "01f1d6e313d51ef69319ae909306c7d0",
+        "identifier": "__FQ__.dcp_intake_questions"
+      },
+      {
+        "id": "0325bb8534ed4d3690a4b77644ead24d",
+        "identifier": "__FQ__.dcp_calc_line_items"
+      },
+      {
+        "id": "76829a2dd92642cd9a306fe1e02fa26c",
+        "identifier": "__FQ__.dcp_calc_details"
+      },
+      {
+        "id": "a2a99dedd2494a2aaf8fa733f913ffa3",
+        "identifier": "__FQ__.dcp_check"
+      },
+      {
+        "id": "cf197b4548c346e683fa734eac1a3e69",
+        "identifier": "__FQ__.dcp_check_inputs"
+      },
+      {
+        "id": "d87bb45d35e241ca83db59a215c8a12a",
+        "identifier": "__FQ__.dcp_request"
+      }
+    ],
+    "sql_snippets": {
+      "filters": [
+        {
+          "id": "01f1d8736e4917c7b6771b12de9deae3",
+          "sql": [
+            "(`dcp_engine_input_requirements`.`applies_when` ILIKE '%stream%' OR `dcp_engine_input_requirements`.`question` ILIKE '%stream%' OR `dcp_engine_input_requirements`.`notes` ILIKE '%stream%' OR `dcp_engine_input_requirements`.`parameter_name` ILIKE '%stream%')"
+          ],
+          "display_name": "streaming workload applicability",
+          "instruction": [
+            "WHEN_TO_USE: Use only when interpreting stream/streaming workload applicability from `dcp_engine_input_requirements` metadata and there is no explicit structured workload-type column being filtered. SCOPE_TABLES: `__FQ__.dcp_engine_input_requirements`. TIMEFRAME_HINT: none. RISK_IF_MISUSED: This is a heuristic text-based match for stream-related requirements; it may miss rows that imply streaming without using the word 'stream', and it should not be treated as a universal workload classification rule outside this metadata table."
+          ]
+        },
+        {
+          "id": "01f1d8736e4a1d2195e3b8a3f5d85ab7",
+          "sql": [
+            "`dcp_engine_input_requirements`.`engine` = 'Processing Engine' AND `dcp_engine_input_requirements`.`request_area` = 'processing' AND `dcp_engine_input_requirements`.`input_role` = 'USER_INPUT'"
+          ],
+          "display_name": "Processing Engine user input requirements",
+          "instruction": [
+            "WHEN_TO_USE: Use when the question asks for input requirements a user must provide for the Processing Engine, not defaults, provenance, or identity fields. SCOPE_TABLES: `__FQ__.dcp_engine_input_requirements`. TIMEFRAME_HINT: none. RISK_IF_MISUSED: This over-restricts if the user asks about all requirement types or multiple engines; it is specifically for Processing Engine user-supplied fields in the processing area."
+          ]
+        }
+      ]
+    }
+  },
+  "benchmarks": {
+    "questions": [
+      {
+        "id": "fb2a5e1ae3e84a59a68142df9c01e4ba",
+        "question": [
+          "A streaming workload needs seconds-level latency. What does it cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT\n",
+              "  request_area,\n",
+              "  parameter_name,\n",
+              "  input_role,\n",
+              "  requirement,\n",
+              "  applies_when,\n",
+              "  default_value_json,\n",
+              "  unit,\n",
+              "  question\n",
+              "FROM\n",
+              "  __FQ__.dcp_engine_input_requirements\n",
+              "WHERE\n",
+              "  engine = 'Processing Engine'\n",
+              "ORDER BY\n",
+              "  sort_order"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "f6594990bf5145bbb61edba4bd80a079",
+        "question": [
+          "A scheduled batch has 2 hours per run but no runs per month. What is the cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it.Input check: request_status = NEEDS_INPUT, errors = runs_per_month MISSING. The agent must NOT give a cost; it asks how many times the batch runs per month (and gives no numbers)."
+        ]
+      },
+      {
+        "id": "f3ab6873bc72453fb56beaef5456fa85",
+        "question": [
+          "Give the core monthly range Low / Expected / High / Stress for SEND_US01."
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT\n",
+              "  scenario,\n",
+              "  core_monthly_usd,\n",
+              "  status,\n",
+              "  confidence\n",
+              "FROM\n",
+              "  __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "f26fac66088848cd840680f359482bb4",
+        "question": [
+          "What is the High all-in monthly cost for SEND_US01 at 10 TB?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.81. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "edd7c84cf34b4b49b4f1cc39a562bfb7",
+        "question": [
+          "What is the confidence for SEND_US01 and why?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "ea8a72f55e3440c38131ca0d6e3c5ade",
+        "question": [
+          "What are the monthly Low / Expected / High and one-time costs for the AI_RAG_MODEL_API preset?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'AI_RAG_MODEL_API')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 104.69, 475.60, 846.51, 509.29, 551.79. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "df1cd5eec28549c1a863a93067334855",
+        "question": [
+          "A scheduled batch runs 30 times a month, 2 hours per run, and no DBU rate is given. What is the Expected monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'SCHEDULED_BATCH', p_runtime_hours_expected => 2, p_runs_per_month => 30, p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "c72145ce03174a92b77a2f97f75ea998",
+        "question": [
+          "SEND daily volume is entered as -1 GB. What happens?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01', p_overrides => '{\"transfer.daily_gb_expected\": -1}')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Input check: request_status = NEEDS_INPUT with INVALID_VALUE (transfer.daily_gb_expected must be a non-negative number, got -1). The agent must NOT give numbers; it says -1 GB is invalid and asks for the correct daily volume."
+        ]
+      },
+      {
+        "id": "b4e921efb561487f8db32613e3868030",
+        "question": [
+          "A streaming job has no DBU rate and no run details. What is the Expected monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_workload_type => 'CONTINUOUS_STREAMING', p_not_applicable_areas => 'sql,transfer,storage,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: sql, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "5be589e2293b4c06aa96be78d772f1e3",
+        "question": [
+          "Why is the Low backfill cost $0.00 for SEND?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "4dd8131c1ea74a7ea3c3bcd0570112ef",
+        "question": [
+          "8 GB a day moves through DataSync for 22 days, plus a 5,000 GB one-time migration. What are the costs?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_daily_gb_expected => 8, p_transfer_days_per_month => 22, p_initial_transfer_gb => 5000, p_not_applicable_areas => 'processing,sql,storage,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "4dad97c8c6cd4d00889be0484872b29c",
+        "question": [
+          "100 calls a day on gpt-5-4, 1,000 input and 100 output tokens per call. What is the Expected monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_model => 'gpt-5-4', p_calls_per_day => 100, p_input_tokens_expected => 1000, p_output_tokens_expected => 100, p_not_applicable_areas => 'processing,sql,transfer,storage,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, storage, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "337a49d214384de2ac665066330a94b9",
+        "question": [
+          "SEND says each file is read 3 times. What is the new High all-in monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"s3_read_requests_per_file\": 3}')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 762.83. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "262e1566e66d4597baf2da3c828ffcb3",
+        "question": [
+          "What is the High first-year total for SEND_US01 at 10 TB, and what is the one-time part?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01', p_overrides => '{\"retained_storage_tb\": 10}')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 9,278.76, 125.00. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "1e4d6abfb7f44d7c9a1609311a5c88a4",
+        "question": [
+          "Which SEND_US01 costs are pending?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_details(p_use_case => 'SEND_US01')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): see workbook tab C. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "184df023dee74cf4bfb0ed6bcdbb66a9",
+        "question": [
+          "2 TB retained, 100 files a day, 10 encrypted a day, 1 KMS key, 3 reads per file. What is the Expected monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_retained_tb => 2, p_files_per_day => 100, p_encrypted_files_per_day => 10, p_kms_keys => 1, p_s3_read_requests_per_file => 3, p_not_applicable_areas => 'processing,sql,transfer,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, sql, transfer, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "17fccc5e0a254839a67839fe78c16696",
+        "question": [
+          "What is the High core monthly estimate for SEND_US01?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT\n",
+              "  use_case_id,\n",
+              "  scenario,\n",
+              "  core_monthly_usd,\n",
+              "  recurring_monthly_usd,\n",
+              "  one_time_usd,\n",
+              "  status,\n",
+              "  pending_items,\n",
+              "  pending_detail,\n",
+              "  area_states,\n",
+              "  confidence,\n",
+              "  request_status,\n",
+              "  rate_card_source\n",
+              "FROM\n",
+              "  __FQ__.dcp_calc_totals(p_use_case => 'SEND_US01')\n",
+              "WHERE\n",
+              "  scenario = 'HIGH'"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "17c840184f4344dba57a7601f2f62871",
+        "question": [
+          "SQL reporting for 25 concurrent users, 22 working days. What is the High monthly cost?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_request => __FQ__.dcp_request(p_concurrent_users => 25, p_working_days_per_month => 22, p_not_applicable_areas => 'processing,transfer,storage,model_endpoints,one_time_model_jobs'))"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "AREAS: the question does not say whether the other calculator areas apply, so the agent's FIRST answer must give no numbers and ask for the state (Included / Excluded / Unknown / Not Applicable) of: processing, transfer, storage, model_endpoints, one_time_model_jobs - together with any missing required input. After the reply 'the rest are not applicable', the figures must equal the calculator output of this SQL exactly (USD, 2 decimals), with PENDING items shown as PENDING and STRESS only if the question asks for it."
+        ]
+      },
+      {
+        "id": "13002befb3d14f3581e8998cac75c52b",
+        "question": [
+          "If SEND retains 8 TB and migrates 8,000 GB, what are the High monthly and first-year figures?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT * FROM __FQ__.dcp_calc_totals(p_use_case => 'SEND', p_overrides => '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}')"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 716.81, 8,701.76, 100.00. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "127efeaa5df14d49b458fa28fee5db8c",
+        "question": [
+          "What rate is used for Databricks Jobs Serverless and where does it come from?"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT provider, service, sku, unit, region, rate, status, source FROM __FQ__.dcp_rate_card WHERE provider = 'DATABRICKS' AND unit = 'DBU' AND region = 'US_EAST_1' AND sku ILIKE '%JOBS_SERVERLESS%'"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Grade against the calculator output of the answer SQL: figures copied exactly (USD, 2 decimals), never recomputed by the agent; PENDING items shown as PENDING with their reason (not $0); STRESS labelled an operating sensitivity, not a forecast; monthly and one-time kept separate.Expected at governed account rates (DCP benchmark workbook, tab C): 0.35. At other rate sources the figures differ; grade against the answer SQL's result."
+        ]
+      },
+      {
+        "id": "01f1d870369a1b899b3032606a93731c",
+        "question": [
+          "Estimate this workload: {\"use_case_id\":\"NEW_WORKLOAD_02\",\"use_case_name\":\"Nightly batch\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"C01\",\"name\":\"Nightly batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":1.0,\"runs_per_month\":30}],\"scope_included\":[],\"scope_excluded\":[]}"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT issues.section, issues.field, issues.issue, issues.received, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"use_case_id\":\"NEW_WORKLOAD_02\",\"use_case_name\":\"Nightly batch\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"C01\",\"name\":\"Nightly batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":1.0,\"runs_per_month\":30}],\"scope_included\":[],\"scope_excluded\":[]}') AS issues WHERE issues.blocking"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "Both scope lists are empty: the agent gives no figures, asks the user to confirm that processing (the only area with values) needs an estimate, and lists sql, transfer, storage, model endpoints and one-time model jobs as areas missing from the JSON that it can also estimate."
+        ]
+      },
+      {
+        "id": "01f1d87036871f07a185c96946aaa869",
+        "question": [
+          "can you provide an estimate for the below workload {\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"],\"notes\":[\"S3 read requests are intentionally unknown and must remain pending, not zero.\"]}"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT issues.section, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"INCLUDED\",\"transfer\":\"INCLUDED\",\"storage\":\"INCLUDED\",\"model_endpoints\":\"EXCLUDED\",\"one_time_model_jobs\":\"EXCLUDED\"},\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "The scope lists settle every area: the agent must NOT ask about model endpoints, one-time model jobs, migration or KMS. It gives no figures and asks only how many times each file is read (S3 read requests per file)."
+        ]
+      },
+      {
+        "id": "01f1d6ee8ab711898293cc145ca9d697",
+        "question": [
+          "provide a cost estimate for 12 GB a day through DataSync"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT issues.section, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => __FQ__.dcp_request(p_daily_gb_expected => 12)) AS issues WHERE issues.blocking"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "The answer must give no dollar figures and must not call dcp_calc_totals; it asks the user to confirm the unconfirmed calculator areas and any other blocking inputs."
+        ]
+      },
+      {
+        "id": "01f1d4809f4018909f23fd5760f9c9f7",
+        "question": [
+          "Provide the dcp estimate for the below usecase\n",
+          "{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}"
+        ],
+        "answer": [
+          {
+            "format": "SQL",
+            "content": [
+              "SELECT issues.section, issues.component_id, issues.field, issues.issue, issues.question FROM __FQ__.dcp_check_inputs(p_request => '{\"_calculator_version\":\"4.0.2\",\"use_case_id\":\"NEW_WORKLOAD_01\",\"use_case_name\":\"Daily batch ingestion template validation\",\"scenarios\":[\"LOW\",\"EXPECTED\",\"HIGH\"],\"region\":\"US_EAST_1\",\"processing\":[{\"component_id\":\"NEW-C01\",\"name\":\"Daily batch ingestion\",\"workload_type\":\"SCHEDULED_BATCH\",\"pattern\":\"SCHEDULED\",\"runtime_hours_low\":0.5,\"runtime_hours_expected\":1.0,\"runtime_hours_high\":2.0,\"runs_per_month\":30}],\"sql\":{\"component_id\":\"NEW-SQL\",\"name\":\"Dashboards\",\"concurrent_users\":5,\"working_days_per_month\":22},\"transfer\":{\"daily_gb_low\":1,\"daily_gb_expected\":2,\"daily_gb_high\":4,\"transfer_days_per_month\":22,\"initial_transfer_gb\":null},\"storage\":{\"retained_tb\":1.0,\"files_per_day\":50,\"encrypted_files_per_day\":0,\"kms_keys\":0,\"days_per_month\":30,\"s3_write_requests_per_file\":1,\"s3_read_requests_per_file\":null},\"model_endpoints\":[],\"one_time_model_jobs\":[],\"assumptions\":{},\"scope_included\":[\"Scheduled Databricks batch processing\",\"Databricks SQL reporting\",\"Recurring AWS DataSync transfer\",\"S3 retained storage and write requests\"],\"scope_excluded\":[\"One-time migration\",\"Model API workloads\",\"KMS key and encryption costs\"]}') AS issues WHERE issues.blocking"
+            ]
+          }
+        ],
+        "evaluation_note": [
+          "The response must ask for the missing inputs and must not present any dollar estimate."
+        ]
+      }
+    ]
+  }
+}

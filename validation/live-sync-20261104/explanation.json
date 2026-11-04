@@ -1,0 +1,359 @@
+[
+  {
+    "response": {
+      "id": "01f1d883ff541db793cfb09d6b80833c",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819686.126,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "function_call",
+      "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "status": "completed",
+      "name": "execute_sql",
+      "arguments": "{\"title\":\"Explain SYNC_BATCH estimate basis\",\"sql\":\"SELECT section, component_id, item, detail\\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\\n  p_request => '{\\\"use_case_id\\\":\\\"SYNC_BATCH\\\",\\\"use_case_name\\\":\\\"Sync batch\\\",\\\"scenarios\\\":[\\\"EXPECTED\\\"],\\\"processing\\\":[{\\\"component_id\\\":\\\"B1\\\",\\\"name\\\":\\\"Batch\\\",\\\"workload_type\\\":\\\"SCHEDULED_BATCH\\\",\\\"runtime_hours_expected\\\":2,\\\"runs_per_month\\\":20}],\\\"_areas\\\":{\\\"processing\\\":\\\"INCLUDED\\\",\\\"sql\\\":\\\"NOT_APPLICABLE\\\",\\\"transfer\\\":\\\"NOT_APPLICABLE\\\",\\\"storage\\\":\\\"NOT_APPLICABLE\\\",\\\"model_endpoints\\\":\\\"NOT_APPLICABLE\\\",\\\"one_time_model_jobs\\\":\\\"NOT_APPLICABLE\\\"}}'\\n) \\nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')\"}",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c"
+      },
+      "created_at": 1793819693.184
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "function_call",
+      "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "status": "completed",
+      "name": "execute_sql",
+      "arguments": "{\"title\":\"Explain SYNC_BATCH estimate basis\",\"sql\":\"SELECT section, component_id, item, detail\\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\\n  p_request => '{\\\"use_case_id\\\":\\\"SYNC_BATCH\\\",\\\"use_case_name\\\":\\\"Sync batch\\\",\\\"scenarios\\\":[\\\"EXPECTED\\\"],\\\"processing\\\":[{\\\"component_id\\\":\\\"B1\\\",\\\"name\\\":\\\"Batch\\\",\\\"workload_type\\\":\\\"SCHEDULED_BATCH\\\",\\\"runtime_hours_expected\\\":2,\\\"runs_per_month\\\":20}],\\\"_areas\\\":{\\\"processing\\\":\\\"INCLUDED\\\",\\\"sql\\\":\\\"NOT_APPLICABLE\\\",\\\"transfer\\\":\\\"NOT_APPLICABLE\\\",\\\"storage\\\":\\\"NOT_APPLICABLE\\\",\\\"model_endpoints\\\":\\\"NOT_APPLICABLE\\\",\\\"one_time_model_jobs\\\":\\\"NOT_APPLICABLE\\\"}}'\\n) \\nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')\"}",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c"
+      },
+      "created_at": 1793819693.184
+    },
+    "sequence_number": 2
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 1,
+    "item": {
+      "type": "function_call_output",
+      "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i_output",
+      "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "status": "in_progress",
+      "output": "**Explain SYNC_BATCH estimate basis**",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c",
+        "statement_id": "01f1d884-0391-1463-8a40-a5346bf6e04e"
+      }
+    },
+    "sequence_number": 3
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 1,
+    "item": {
+      "type": "function_call_output",
+      "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i_output",
+      "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+      "status": "completed",
+      "output": "**Explain SYNC_BATCH estimate basis**\n\n| section | component_id | item | detail |\n| --- | --- | --- | --- |\n| CONFIDENCE |  | LOW | 100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. |\n| ASSUMPTION |  |  | B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR |\n| WARNING |  |  | List price used for testing; production estimates use system.billing.account_prices. |\n| RATE |  |  | REFERENCE_ONLY $0.45/DBU - system.billing.list_prices |",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c",
+        "statement_id": "01f1d884-0391-1463-8a40-a5346bf6e04e"
+      }
+    },
+    "sequence_number": 4
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 2,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## Pricing Basis, Assumptions, Confidence & Pending Items \u2014 SYNC_BATCH",
+          "annotations": []
+        },
+        {
+          "type": "output_text",
+          "text": "**Explain SYNC_BATCH estimate basis**\n\n| section | component_id | item | detail |\n| --- | --- | --- | --- |\n| CONFIDENCE |  | LOW | 100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. |\n| ASSUMPTION |  |  | B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR |\n| WARNING |  |  | List price used for testing; production estimates use system.billing.account_prices. |\n| RATE |  |  | REFERENCE_ONLY $0.45/DBU - system.billing.list_prices |",
+          "annotations": [],
+          "metadata": {
+            "sql": "SELECT section, component_id, item, detail\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\n  p_request => '{\"use_case_id\":\"SYNC_BATCH\",\"use_case_name\":\"Sync batch\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}'\n) \nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')",
+            "preview_rows": [
+              [
+                "CONFIDENCE",
+                "",
+                "LOW",
+                "100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges."
+              ],
+              [
+                "ASSUMPTION",
+                "",
+                "",
+                "B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR"
+              ],
+              [
+                "WARNING",
+                "",
+                "",
+                "List price used for testing; production estimates use system.billing.account_prices."
+              ],
+              [
+                "RATE",
+                "",
+                "",
+                "REFERENCE_ONLY $0.45/DBU - system.billing.list_prices"
+              ]
+            ],
+            "columns": [
+              {
+                "name": "section",
+                "type": "STRING"
+              },
+              {
+                "name": "component_id",
+                "type": "STRING"
+              },
+              {
+                "name": "item",
+                "type": "STRING"
+              },
+              {
+                "name": "detail",
+                "type": "STRING"
+              }
+            ],
+            "status": "available",
+            "total_row_count": 4
+          }
+        },
+        {
+          "type": "output_text",
+          "text": "**Pricing basis:** The batch job's cost was priced using the Databricks Jobs compute rate of **$0.45/DBU** (REFERENCE_ONLY status, sourced from `system.billing.list_prices`). No single component DBU-per-hour value was supplied, so the calculator applied its **planning default DBU-per-hour rate** for component B1 to convert the 20 runs/month \u00d7 2 hours/run into DBUs, then priced those DBUs at the list rate.\n\n**Confidence \u2014 LOW:** 100% of the EXPECTED recurring cost rests on planning assumptions (the default DBU/hour intensity), with 0% derived from team-supplied ranges or confirmed figures. This is the calculator's own threshold rule: once planning-assumption share reaches 50% or more of recurring cost, confidence is capped at LOW.\n\n**Assumption used:** B1's compute intensity relied on the `PLANNING_DEFAULT_DBU_PER_HOUR` basis \u2014 i.e., no confirmed or historically calibrated DBU/hour was provided for this batch job.\n\n**Warning:** The rate used is a list price for testing purposes; production estimates would use the governed account rate from `system.billing.account_prices`, which may differ from this figure.\n\n**Pending items:** None \u2014 all inputs needed for the included processing area were supplied, so there are no PENDING line items in this estimate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_019SnM3wWwcEZ3b2kbjMExxm",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c"
+      },
+      "created_at": 1793819705.016,
+      "completed_at": 1793819705.016
+    },
+    "sequence_number": 5
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 2,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## Pricing Basis, Assumptions, Confidence & Pending Items \u2014 SYNC_BATCH",
+          "annotations": []
+        },
+        {
+          "type": "output_text",
+          "text": "**Explain SYNC_BATCH estimate basis**\n\n| section | component_id | item | detail |\n| --- | --- | --- | --- |\n| CONFIDENCE |  | LOW | 100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. |\n| ASSUMPTION |  |  | B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR |\n| WARNING |  |  | List price used for testing; production estimates use system.billing.account_prices. |\n| RATE |  |  | REFERENCE_ONLY $0.45/DBU - system.billing.list_prices |",
+          "annotations": [],
+          "metadata": {
+            "sql": "SELECT section, component_id, item, detail\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\n  p_request => '{\"use_case_id\":\"SYNC_BATCH\",\"use_case_name\":\"Sync batch\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}'\n) \nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')",
+            "preview_rows": [
+              [
+                "CONFIDENCE",
+                "",
+                "LOW",
+                "100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges."
+              ],
+              [
+                "ASSUMPTION",
+                "",
+                "",
+                "B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR"
+              ],
+              [
+                "WARNING",
+                "",
+                "",
+                "List price used for testing; production estimates use system.billing.account_prices."
+              ],
+              [
+                "RATE",
+                "",
+                "",
+                "REFERENCE_ONLY $0.45/DBU - system.billing.list_prices"
+              ]
+            ],
+            "columns": [
+              {
+                "name": "section",
+                "type": "STRING"
+              },
+              {
+                "name": "component_id",
+                "type": "STRING"
+              },
+              {
+                "name": "item",
+                "type": "STRING"
+              },
+              {
+                "name": "detail",
+                "type": "STRING"
+              }
+            ],
+            "status": "available",
+            "total_row_count": 4
+          }
+        },
+        {
+          "type": "output_text",
+          "text": "**Pricing basis:** The batch job's cost was priced using the Databricks Jobs compute rate of **$0.45/DBU** (REFERENCE_ONLY status, sourced from `system.billing.list_prices`). No single component DBU-per-hour value was supplied, so the calculator applied its **planning default DBU-per-hour rate** for component B1 to convert the 20 runs/month \u00d7 2 hours/run into DBUs, then priced those DBUs at the list rate.\n\n**Confidence \u2014 LOW:** 100% of the EXPECTED recurring cost rests on planning assumptions (the default DBU/hour intensity), with 0% derived from team-supplied ranges or confirmed figures. This is the calculator's own threshold rule: once planning-assumption share reaches 50% or more of recurring cost, confidence is capped at LOW.\n\n**Assumption used:** B1's compute intensity relied on the `PLANNING_DEFAULT_DBU_PER_HOUR` basis \u2014 i.e., no confirmed or historically calibrated DBU/hour was provided for this batch job.\n\n**Warning:** The rate used is a list price for testing purposes; production estimates would use the governed account rate from `system.billing.account_prices`, which may differ from this figure.\n\n**Pending items:** None \u2014 all inputs needed for the included processing area were supplied, so there are no PENDING line items in this estimate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_019SnM3wWwcEZ3b2kbjMExxm",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883ff541db793cfb09d6b80833c"
+      },
+      "created_at": 1793819705.016,
+      "completed_at": 1793819705.016
+    },
+    "sequence_number": 6
+  },
+  {
+    "response": {
+      "id": "01f1d883ff541db793cfb09d6b80833c",
+      "status": "completed",
+      "output": [
+        {
+          "type": "function_call",
+          "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+          "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+          "status": "completed",
+          "name": "execute_sql",
+          "arguments": "{\"title\":\"Explain SYNC_BATCH estimate basis\",\"sql\":\"SELECT section, component_id, item, detail\\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\\n  p_request => '{\\\"use_case_id\\\":\\\"SYNC_BATCH\\\",\\\"use_case_name\\\":\\\"Sync batch\\\",\\\"scenarios\\\":[\\\"EXPECTED\\\"],\\\"processing\\\":[{\\\"component_id\\\":\\\"B1\\\",\\\"name\\\":\\\"Batch\\\",\\\"workload_type\\\":\\\"SCHEDULED_BATCH\\\",\\\"runtime_hours_expected\\\":2,\\\"runs_per_month\\\":20}],\\\"_areas\\\":{\\\"processing\\\":\\\"INCLUDED\\\",\\\"sql\\\":\\\"NOT_APPLICABLE\\\",\\\"transfer\\\":\\\"NOT_APPLICABLE\\\",\\\"storage\\\":\\\"NOT_APPLICABLE\\\",\\\"model_endpoints\\\":\\\"NOT_APPLICABLE\\\",\\\"one_time_model_jobs\\\":\\\"NOT_APPLICABLE\\\"}}'\\n) \\nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')\"}",
+          "metadata": {
+            "message_id": "01f1d883ff541db793cfb09d6b80833c"
+          },
+          "created_at": 1793819693.184
+        },
+        {
+          "type": "function_call_output",
+          "id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i_output",
+          "call_id": "pub_toolu_bdrk_01LyykZCGJGQQwUPNFsrHi9i",
+          "status": "completed",
+          "output": "**Explain SYNC_BATCH estimate basis**\n\n| section | component_id | item | detail |\n| --- | --- | --- | --- |\n| CONFIDENCE |  | LOW | 100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. |\n| ASSUMPTION |  |  | B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR |\n| WARNING |  |  | List price used for testing; production estimates use system.billing.account_prices. |\n| RATE |  |  | REFERENCE_ONLY $0.45/DBU - system.billing.list_prices |",
+          "metadata": {
+            "message_id": "01f1d883ff541db793cfb09d6b80833c",
+            "statement_id": "01f1d884-0391-1463-8a40-a5346bf6e04e"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "## Pricing Basis, Assumptions, Confidence & Pending Items \u2014 SYNC_BATCH",
+              "annotations": []
+            },
+            {
+              "type": "output_text",
+              "text": "**Explain SYNC_BATCH estimate basis**\n\n| section | component_id | item | detail |\n| --- | --- | --- | --- |\n| CONFIDENCE |  | LOW | 100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. |\n| ASSUMPTION |  |  | B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR |\n| WARNING |  |  | List price used for testing; production estimates use system.billing.account_prices. |\n| RATE |  |  | REFERENCE_ONLY $0.45/DBU - system.billing.list_prices |",
+              "annotations": [],
+              "metadata": {
+                "sql": "SELECT section, component_id, item, detail\nFROM fevm_catalog_naren.dcp_estimator.dcp_calc_details(\n  p_request => '{\"use_case_id\":\"SYNC_BATCH\",\"use_case_name\":\"Sync batch\",\"scenarios\":[\"EXPECTED\"],\"processing\":[{\"component_id\":\"B1\",\"name\":\"Batch\",\"workload_type\":\"SCHEDULED_BATCH\",\"runtime_hours_expected\":2,\"runs_per_month\":20}],\"_areas\":{\"processing\":\"INCLUDED\",\"sql\":\"NOT_APPLICABLE\",\"transfer\":\"NOT_APPLICABLE\",\"storage\":\"NOT_APPLICABLE\",\"model_endpoints\":\"NOT_APPLICABLE\",\"one_time_model_jobs\":\"NOT_APPLICABLE\"}}'\n) \nWHERE section IN ('CONFIDENCE','PENDING','ASSUMPTION','WARNING','RATE')",
+                "preview_rows": [
+                  [
+                    "CONFIDENCE",
+                    "",
+                    "LOW",
+                    "100% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges."
+                  ],
+                  [
+                    "ASSUMPTION",
+                    "",
+                    "",
+                    "B1 [PLANNING_ASSUMPTION]: PLANNING_DEFAULT_DBU_PER_HOUR"
+                  ],
+                  [
+                    "WARNING",
+                    "",
+                    "",
+                    "List price used for testing; production estimates use system.billing.account_prices."
+                  ],
+                  [
+                    "RATE",
+                    "",
+                    "",
+                    "REFERENCE_ONLY $0.45/DBU - system.billing.list_prices"
+                  ]
+                ],
+                "columns": [
+                  {
+                    "name": "section",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "component_id",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "item",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "detail",
+                    "type": "STRING"
+                  }
+                ],
+                "status": "available",
+                "total_row_count": 4
+              }
+            },
+            {
+              "type": "output_text",
+              "text": "**Pricing basis:** The batch job's cost was priced using the Databricks Jobs compute rate of **$0.45/DBU** (REFERENCE_ONLY status, sourced from `system.billing.list_prices`). No single component DBU-per-hour value was supplied, so the calculator applied its **planning default DBU-per-hour rate** for component B1 to convert the 20 runs/month \u00d7 2 hours/run into DBUs, then priced those DBUs at the list rate.\n\n**Confidence \u2014 LOW:** 100% of the EXPECTED recurring cost rests on planning assumptions (the default DBU/hour intensity), with 0% derived from team-supplied ranges or confirmed figures. This is the calculator's own threshold rule: once planning-assumption share reaches 50% or more of recurring cost, confidence is capped at LOW.\n\n**Assumption used:** B1's compute intensity relied on the `PLANNING_DEFAULT_DBU_PER_HOUR` basis \u2014 i.e., no confirmed or historically calibrated DBU/hour was provided for this batch job.\n\n**Warning:** The rate used is a list price for testing purposes; production estimates would use the governed account rate from `system.billing.account_prices`, which may differ from this figure.\n\n**Pending items:** None \u2014 all inputs needed for the included processing area were supplied, so there are no PENDING line items in this estimate.",
+              "annotations": []
+            }
+          ],
+          "id": "pub_toolu_bdrk_019SnM3wWwcEZ3b2kbjMExxm",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d883ff541db793cfb09d6b80833c"
+          },
+          "created_at": 1793819705.016,
+          "completed_at": 1793819705.016
+        }
+      ],
+      "conversation_id": "01f1d883e8761e93a82f232b53113b2f",
+      "created_at": 1793819686.126,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 7,
+    "type": "response.completed"
+  }
+]

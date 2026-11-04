@@ -1,0 +1,440 @@
+[
+  {
+    "response": {
+      "id": "01f1d883e8e8171596ce420e394d5086",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d883e8771316b43adeb1a26866cb",
+      "created_at": 1793819648.505,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "function_call",
+      "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "status": "completed",
+      "name": "execute_sql",
+      "arguments": "{\"title\":\"SEND_US01 EXPECTED totals\",\"sql\":\"SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'\"}",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086"
+      },
+      "created_at": 1793819656.41
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "function_call",
+      "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "status": "completed",
+      "name": "execute_sql",
+      "arguments": "{\"title\":\"SEND_US01 EXPECTED totals\",\"sql\":\"SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'\"}",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086"
+      },
+      "created_at": 1793819656.41
+    },
+    "sequence_number": 2
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 1,
+    "item": {
+      "type": "function_call_output",
+      "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq_output",
+      "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "status": "in_progress",
+      "output": "**SEND_US01 EXPECTED totals**",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086",
+        "statement_id": "01f1d883-eda9-1323-b97e-f3fc85d0fd21"
+      }
+    },
+    "sequence_number": 3
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 1,
+    "item": {
+      "type": "function_call_output",
+      "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq_output",
+      "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+      "status": "completed",
+      "output": "**SEND_US01 EXPECTED totals**\n\n| scenario | recurring_monthly_usd | one_time_usd | pending_items | pending_detail | status | area_states | confidence | confidence_reason | request_status | errors | rate_card_source | disclaimer |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| EXPECTED | 610.38 | 125.0 | 2 | KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero. | PARTIAL_PENDING_INPUTS | processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE | LOW | 62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. | OK |  | system.billing.list_prices | Internal planning estimate, not an invoice or committed run rate. |",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086",
+        "statement_id": "01f1d883-eda9-1323-b97e-f3fc85d0fd21"
+      }
+    },
+    "sequence_number": 4
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 2,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "# SEND_US01 EXPECTED estimate\n\nThe EXPECTED scenario for SEND_US01 comes to **$610.38 per month** in recurring cost and **$125.00** in one-time cost. The one-time cost is shown separately from the recurring figure. \\[[1](https://fevm-classic-stable-naren.cloud.databricks.com/genie/rooms/01f1d883dc591276a3d85615bcfc12bb/chats/01f1d883e8771316b43adeb1a26866cb?o=7474644082064164&gra_focus=pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq)\\]",
+          "annotations": []
+        },
+        {
+          "type": "output_text",
+          "text": "**SEND_US01 EXPECTED totals**\n\n| scenario | recurring_monthly_usd | one_time_usd | pending_items | pending_detail | status | area_states | confidence | confidence_reason | request_status | errors | rate_card_source | disclaimer |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| EXPECTED | 610.38 | 125.0 | 2 | KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero. | PARTIAL_PENDING_INPUTS | processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE | LOW | 62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. | OK |  | system.billing.list_prices | Internal planning estimate, not an invoice or committed run rate. |",
+          "annotations": [],
+          "metadata": {
+            "sql": "SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'",
+            "preview_rows": [
+              [
+                "EXPECTED",
+                "610.38",
+                "125.0",
+                "2",
+                "KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero.",
+                "PARTIAL_PENDING_INPUTS",
+                "processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE",
+                "LOW",
+                "62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges.",
+                "OK",
+                "",
+                "system.billing.list_prices",
+                "Internal planning estimate, not an invoice or committed run rate."
+              ]
+            ],
+            "columns": [
+              {
+                "name": "scenario",
+                "type": "STRING"
+              },
+              {
+                "name": "recurring_monthly_usd",
+                "type": "DOUBLE"
+              },
+              {
+                "name": "one_time_usd",
+                "type": "DOUBLE"
+              },
+              {
+                "name": "pending_items",
+                "type": "INT"
+              },
+              {
+                "name": "pending_detail",
+                "type": "STRING"
+              },
+              {
+                "name": "status",
+                "type": "STRING"
+              },
+              {
+                "name": "area_states",
+                "type": "STRING"
+              },
+              {
+                "name": "confidence",
+                "type": "STRING"
+              },
+              {
+                "name": "confidence_reason",
+                "type": "STRING"
+              },
+              {
+                "name": "request_status",
+                "type": "STRING"
+              },
+              {
+                "name": "errors",
+                "type": "STRING"
+              },
+              {
+                "name": "rate_card_source",
+                "type": "STRING"
+              },
+              {
+                "name": "disclaimer",
+                "type": "STRING"
+              }
+            ],
+            "status": "available",
+            "total_row_count": 1
+          }
+        },
+        {
+          "type": "output_text",
+          "text": "- **Confidence is LOW.** About 62% of the EXPECTED recurring cost rests on planning assumptions, and none rests on team-supplied ranges.\n- **Two items are pending.** The S3 read requests and the KMS decrypt-on-read requests can't be priced because the read frequency hasn't been supplied. They are not counted in the totals, and they are not zero. The status is therefore partial (PARTIAL_PENDING_INPUTS).\n- **Areas included:** processing, SQL, transfer and storage.\n- **Areas not applicable:** recurring and one-time Model API.\n- **Rate source:** the rates come from `system.billing.list_prices`, so figures may differ at governed account rates.\n\nThis is an internal planning estimate, not an invoice or committed run rate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_msg_1ee036cd91884c82",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086"
+      },
+      "created_at": 1793819661.864,
+      "completed_at": 1793819661.864
+    },
+    "sequence_number": 5
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 2,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "# SEND_US01 EXPECTED estimate\n\nThe EXPECTED scenario for SEND_US01 comes to **$610.38 per month** in recurring cost and **$125.00** in one-time cost. The one-time cost is shown separately from the recurring figure. \\[[1](https://fevm-classic-stable-naren.cloud.databricks.com/genie/rooms/01f1d883dc591276a3d85615bcfc12bb/chats/01f1d883e8771316b43adeb1a26866cb?o=7474644082064164&gra_focus=pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq)\\]",
+          "annotations": []
+        },
+        {
+          "type": "output_text",
+          "text": "**SEND_US01 EXPECTED totals**\n\n| scenario | recurring_monthly_usd | one_time_usd | pending_items | pending_detail | status | area_states | confidence | confidence_reason | request_status | errors | rate_card_source | disclaimer |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| EXPECTED | 610.38 | 125.0 | 2 | KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero. | PARTIAL_PENDING_INPUTS | processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE | LOW | 62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. | OK |  | system.billing.list_prices | Internal planning estimate, not an invoice or committed run rate. |",
+          "annotations": [],
+          "metadata": {
+            "sql": "SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'",
+            "preview_rows": [
+              [
+                "EXPECTED",
+                "610.38",
+                "125.0",
+                "2",
+                "KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero.",
+                "PARTIAL_PENDING_INPUTS",
+                "processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE",
+                "LOW",
+                "62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges.",
+                "OK",
+                "",
+                "system.billing.list_prices",
+                "Internal planning estimate, not an invoice or committed run rate."
+              ]
+            ],
+            "columns": [
+              {
+                "name": "scenario",
+                "type": "STRING"
+              },
+              {
+                "name": "recurring_monthly_usd",
+                "type": "DOUBLE"
+              },
+              {
+                "name": "one_time_usd",
+                "type": "DOUBLE"
+              },
+              {
+                "name": "pending_items",
+                "type": "INT"
+              },
+              {
+                "name": "pending_detail",
+                "type": "STRING"
+              },
+              {
+                "name": "status",
+                "type": "STRING"
+              },
+              {
+                "name": "area_states",
+                "type": "STRING"
+              },
+              {
+                "name": "confidence",
+                "type": "STRING"
+              },
+              {
+                "name": "confidence_reason",
+                "type": "STRING"
+              },
+              {
+                "name": "request_status",
+                "type": "STRING"
+              },
+              {
+                "name": "errors",
+                "type": "STRING"
+              },
+              {
+                "name": "rate_card_source",
+                "type": "STRING"
+              },
+              {
+                "name": "disclaimer",
+                "type": "STRING"
+              }
+            ],
+            "status": "available",
+            "total_row_count": 1
+          }
+        },
+        {
+          "type": "output_text",
+          "text": "- **Confidence is LOW.** About 62% of the EXPECTED recurring cost rests on planning assumptions, and none rests on team-supplied ranges.\n- **Two items are pending.** The S3 read requests and the KMS decrypt-on-read requests can't be priced because the read frequency hasn't been supplied. They are not counted in the totals, and they are not zero. The status is therefore partial (PARTIAL_PENDING_INPUTS).\n- **Areas included:** processing, SQL, transfer and storage.\n- **Areas not applicable:** recurring and one-time Model API.\n- **Rate source:** the rates come from `system.billing.list_prices`, so figures may differ at governed account rates.\n\nThis is an internal planning estimate, not an invoice or committed run rate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_msg_1ee036cd91884c82",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e8171596ce420e394d5086"
+      },
+      "created_at": 1793819661.864,
+      "completed_at": 1793819661.864
+    },
+    "sequence_number": 6
+  },
+  {
+    "response": {
+      "id": "01f1d883e8e8171596ce420e394d5086",
+      "status": "completed",
+      "output": [
+        {
+          "type": "function_call",
+          "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+          "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+          "status": "completed",
+          "name": "execute_sql",
+          "arguments": "{\"title\":\"SEND_US01 EXPECTED totals\",\"sql\":\"SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'\"}",
+          "metadata": {
+            "message_id": "01f1d883e8e8171596ce420e394d5086"
+          },
+          "created_at": 1793819656.41
+        },
+        {
+          "type": "function_call_output",
+          "id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq_output",
+          "call_id": "pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq",
+          "status": "completed",
+          "output": "**SEND_US01 EXPECTED totals**\n\n| scenario | recurring_monthly_usd | one_time_usd | pending_items | pending_detail | status | area_states | confidence | confidence_reason | request_status | errors | rate_card_source | disclaimer |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| EXPECTED | 610.38 | 125.0 | 2 | KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero. | PARTIAL_PENDING_INPUTS | processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE | LOW | 62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. | OK |  | system.billing.list_prices | Internal planning estimate, not an invoice or committed run rate. |",
+          "metadata": {
+            "message_id": "01f1d883e8e8171596ce420e394d5086",
+            "statement_id": "01f1d883-eda9-1323-b97e-f3fc85d0fd21"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "# SEND_US01 EXPECTED estimate\n\nThe EXPECTED scenario for SEND_US01 comes to **$610.38 per month** in recurring cost and **$125.00** in one-time cost. The one-time cost is shown separately from the recurring figure. \\[[1](https://fevm-classic-stable-naren.cloud.databricks.com/genie/rooms/01f1d883dc591276a3d85615bcfc12bb/chats/01f1d883e8771316b43adeb1a26866cb?o=7474644082064164&gra_focus=pub_toolu_bdrk_011dvr8bRMqgxZ9CXdtgKFeq)\\]",
+              "annotations": []
+            },
+            {
+              "type": "output_text",
+              "text": "**SEND_US01 EXPECTED totals**\n\n| scenario | recurring_monthly_usd | one_time_usd | pending_items | pending_detail | status | area_states | confidence | confidence_reason | request_status | errors | rate_card_source | disclaimer |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| EXPECTED | 610.38 | 125.0 | 2 | KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero. | PARTIAL_PENDING_INPUTS | processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE | LOW | 62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges. | OK |  | system.billing.list_prices | Internal planning estimate, not an invoice or committed run rate. |",
+              "annotations": [],
+              "metadata": {
+                "sql": "SELECT scenario, recurring_monthly_usd, one_time_usd, pending_items, pending_detail, status, area_states, confidence, confidence_reason, request_status, errors, rate_card_source, disclaimer FROM fevm_catalog_naren.dcp_estimator.dcp_calc_totals(p_use_case => 'SEND_US01') WHERE scenario = 'EXPECTED'",
+                "preview_rows": [
+                  [
+                    "EXPECTED",
+                    "610.38",
+                    "125.0",
+                    "2",
+                    "KMS-DECRYPT-REQUESTS: KMS decrypt-on-read depends on read frequency; pending, not zero.; S3-READ-REQUESTS: S3 read frequency not supplied; pending, not zero.",
+                    "PARTIAL_PENDING_INPUTS",
+                    "processing: INCLUDED; sql: INCLUDED; transfer: INCLUDED; storage: INCLUDED; model_endpoints: NOT_APPLICABLE; one_time_model_jobs: NOT_APPLICABLE",
+                    "LOW",
+                    "62% of EXPECTED recurring cost rests on planning assumptions; 0% on team-supplied ranges.",
+                    "OK",
+                    "",
+                    "system.billing.list_prices",
+                    "Internal planning estimate, not an invoice or committed run rate."
+                  ]
+                ],
+                "columns": [
+                  {
+                    "name": "scenario",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "recurring_monthly_usd",
+                    "type": "DOUBLE"
+                  },
+                  {
+                    "name": "one_time_usd",
+                    "type": "DOUBLE"
+                  },
+                  {
+                    "name": "pending_items",
+                    "type": "INT"
+                  },
+                  {
+                    "name": "pending_detail",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "status",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "area_states",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "confidence",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "confidence_reason",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "request_status",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "errors",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "rate_card_source",
+                    "type": "STRING"
+                  },
+                  {
+                    "name": "disclaimer",
+                    "type": "STRING"
+                  }
+                ],
+                "status": "available",
+                "total_row_count": 1
+              }
+            },
+            {
+              "type": "output_text",
+              "text": "- **Confidence is LOW.** About 62% of the EXPECTED recurring cost rests on planning assumptions, and none rests on team-supplied ranges.\n- **Two items are pending.** The S3 read requests and the KMS decrypt-on-read requests can't be priced because the read frequency hasn't been supplied. They are not counted in the totals, and they are not zero. The status is therefore partial (PARTIAL_PENDING_INPUTS).\n- **Areas included:** processing, SQL, transfer and storage.\n- **Areas not applicable:** recurring and one-time Model API.\n- **Rate source:** the rates come from `system.billing.list_prices`, so figures may differ at governed account rates.\n\nThis is an internal planning estimate, not an invoice or committed run rate.",
+              "annotations": []
+            }
+          ],
+          "id": "pub_msg_1ee036cd91884c82",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d883e8e8171596ce420e394d5086"
+          },
+          "created_at": 1793819661.864,
+          "completed_at": 1793819661.864
+        }
+      ],
+      "conversation_id": "01f1d883e8771316b43adeb1a26866cb",
+      "created_at": 1793819648.505,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 7,
+    "type": "response.completed"
+  }
+]

@@ -1,0 +1,93 @@
+[
+  {
+    "response": {
+      "id": "01f1d883e8e011a88416813271f39658",
+      "status": "in_progress",
+      "output": [],
+      "conversation_id": "01f1d883e8761f989b98107d82f73e9d",
+      "created_at": 1793819648.451,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 0,
+    "type": "response.created"
+  },
+  {
+    "type": "response.output_item.added",
+    "output_index": 0,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## No estimate can be calculated yet\n\nworking_days_per_month is 45, but a month has at most 31 days. I haven't run any calculation, because the value has to be corrected first and I won't change or cap it for you.\n\n**Invalid value**\n- SQL area, component ADHOC-SQL: working_days_per_month is 45. It must be a whole number from 0 to 31.\n\n**Missing values**\n- The SQL component needs a component_id and a name. Please give both, for example an ID and name for the SQL reporting component.\n\nPlease provide these values so I can calculate your estimate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01B9kNF1tmZXvDYGXb8EMnM8",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e011a88416813271f39658"
+      },
+      "created_at": 1793819658.211,
+      "completed_at": 1793819658.211
+    },
+    "sequence_number": 1
+  },
+  {
+    "type": "response.output_item.done",
+    "output_index": 0,
+    "item": {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "## No estimate can be calculated yet\n\nworking_days_per_month is 45, but a month has at most 31 days. I haven't run any calculation, because the value has to be corrected first and I won't change or cap it for you.\n\n**Invalid value**\n- SQL area, component ADHOC-SQL: working_days_per_month is 45. It must be a whole number from 0 to 31.\n\n**Missing values**\n- The SQL component needs a component_id and a name. Please give both, for example an ID and name for the SQL reporting component.\n\nPlease provide these values so I can calculate your estimate.",
+          "annotations": []
+        }
+      ],
+      "id": "pub_toolu_bdrk_01B9kNF1tmZXvDYGXb8EMnM8",
+      "status": "completed",
+      "metadata": {
+        "message_id": "01f1d883e8e011a88416813271f39658"
+      },
+      "created_at": 1793819658.211,
+      "completed_at": 1793819658.211
+    },
+    "sequence_number": 2
+  },
+  {
+    "response": {
+      "id": "01f1d883e8e011a88416813271f39658",
+      "status": "completed",
+      "output": [
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "## No estimate can be calculated yet\n\nworking_days_per_month is 45, but a month has at most 31 days. I haven't run any calculation, because the value has to be corrected first and I won't change or cap it for you.\n\n**Invalid value**\n- SQL area, component ADHOC-SQL: working_days_per_month is 45. It must be a whole number from 0 to 31.\n\n**Missing values**\n- The SQL component needs a component_id and a name. Please give both, for example an ID and name for the SQL reporting component.\n\nPlease provide these values so I can calculate your estimate.",
+              "annotations": []
+            }
+          ],
+          "id": "pub_toolu_bdrk_01B9kNF1tmZXvDYGXb8EMnM8",
+          "status": "completed",
+          "metadata": {
+            "message_id": "01f1d883e8e011a88416813271f39658"
+          },
+          "created_at": 1793819658.211,
+          "completed_at": 1793819658.211
+        }
+      ],
+      "conversation_id": "01f1d883e8761f989b98107d82f73e9d",
+      "created_at": 1793819648.451,
+      "model": "genie-agent",
+      "object": "response"
+    },
+    "sequence_number": 3,
+    "type": "response.completed"
+  }
+]
