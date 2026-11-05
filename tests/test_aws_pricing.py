@@ -33,7 +33,7 @@ class AwsPricingTests(unittest.TestCase):
         row=next(dict(x) for x in self.rows if x['usage_type']=='TimedStorage-ByteHrs' and x['region']=='us-east-1' and x['s3_storage_class']=='Standard')
         for field,value in [('region','us-west-2'),('s3_storage_class','Glacier'),('usage_type','USE2-TimedStorage-ByteHrs'),('price_unit','unknown')]:
             changed={**row,field:value};self.assertIsNone(lookup.select_rate([changed],self.storage,'2026-09-01'))
-        self.assertIsNone(lookup.select_rate([row,dict(row)],self.storage,'2026-09-01'))
+        self.assertEqual(lookup.select_rate([row,dict(row)],self.storage,'2026-09-01'),row['billed_rate'])
         self.assertIsNone(lookup.select_rate([{**row,'billed_rate':None}],self.storage,'2026-09-01'))
         self.assertEqual(lookup.select_rate([{**row,'billed_rate':0}],self.storage,'2026-09-01'),0)
     def test_runtime_replaces_legacy_rates_and_rejects_invalid_metadata(self):
@@ -52,7 +52,7 @@ class AwsPricingTests(unittest.TestCase):
         row=next(dict(x) for x in self.rows if x['usage_type']=='TimedStorage-ByteHrs' and x['region']=='us-east-1' and x['s3_storage_class']=='Standard')
         for dates in ({'period_start':None,'period_end':None},{'period_start':'2027-01-01','period_end':'2020-01-01'}):
             self.assertEqual(lookup.select_rate([{**row,**dates}],self.storage,'2026-11-04'),row['billed_rate'])
-        self.assertIsNone(lookup.select_rate([row,{**row,'period_start':'2027-01-01','period_end':'2027-12-31'}],self.storage,'2026-11-04'))
+        self.assertEqual(lookup.select_rate([row,{**row,'period_start':'2027-01-01','period_end':'2027-12-31'}],self.storage,'2026-11-04'),row['billed_rate'])
 
     def test_datasync_confirmation_is_limited_to_exact_charge_and_unknown_unit(self):
         row=next(dict(x) for x in self.rows if x['service_name']=='AWS DataSync' and x['usage_type']=='USE1-Transferred-Bytes' and x['region']=='us-east-1' and x['charge_type']=='Data copied (per GB)')
@@ -62,3 +62,18 @@ class AwsPricingTests(unittest.TestCase):
         rate=next(x for x in result['rows'] if x['service']=='DATASYNC')
         self.assertIn('User confirmed',rate['notes'])
         self.assertIn('per unit (unit not reported)',rate['notes'])
+
+    def test_one_usable_duplicate_is_selected_deterministically(self):
+        row=next(dict(x) for x in self.rows if x['usage_type']=='TimedStorage-ByteHrs' and x['region']=='us-east-1' and x['s3_storage_class']=='Standard')
+        first={**row,'source_row_id':'a','billed_rate':0.02,'list_price':None}
+        second={**row,'source_row_id':'b','billed_rate':0.01,'list_price':0.03}
+        invalid={**row,'source_row_id':'0','billed_rate':None,'list_price':None}
+        for rows in ([second,invalid,first],[first,second,invalid]):
+            self.assertEqual(lookup.select_rate(rows,self.storage,basis='BILLED'),0.02)
+            self.assertEqual(lookup.select_rate(rows,self.storage,basis='LIST'),0.03)
+            result=lookup.apply_aws_rates({},dict(as_of='2026-11-05',source='test',rows=[],aws_rows=rows))
+            storage=next(x for x in result['rows'] if x['sku']=='TimedStorage-ByteHrs')
+            notes=__import__('json').loads(storage['notes'])
+            self.assertEqual(notes['match_count'],3)
+            self.assertEqual(notes['usable_match_count'],2)
+            self.assertEqual(notes['source_rows'][0]['source_row_id'],'a')

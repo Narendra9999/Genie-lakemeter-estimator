@@ -1,10 +1,11 @@
 {
   "space_id": "01f1d6efcecd1620b04cf487817675b7",
-  "update_time": "2026-11-05T12:23:54.164Z",
-  "etag": "871153cfe0353527ee80a619e8e7d6a485a4e5ed710076ef5a598876d68b0df4",
+  "update_time": "2026-11-05T18:12:23.544Z",
+  "etag": "f5272bcfc1208e80367532062d17da237d7d86ea265a7cd7699cdd499701f4a5",
   "source_schema": "fevm_catalog_naren.dcp_estimator",
   "source_profile": "fevm-naren",
-  "direction": "aws_period_validation_removal_and_readback",
+  "direction": "aws_rule_enforcement_refactor_and_readback",
   "source_agent_modified": true,
-  "aws_period_validation_enabled": false
+  "aws_period_validation_enabled": false,
+  "duplicate_selection": "first usable ordered by source_row_id and stable rate fields"
 }

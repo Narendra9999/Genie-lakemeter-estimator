@@ -22,7 +22,7 @@ Maintain one calculator source, deploy its embedded Python bundle as Unity Catal
 
 **The repository file and deployed copy are separate.** Saving a source edit or pushing to GitHub does not update the deployed functions. Rebuild and deploy after testing.
 
-**Current maintenance baseline:** AWS pricing comes from an existing configured table. Source period dates are audit-only; they do not filter AWS prices. BILLED is the default, LIST is explicit. The exact DataSync charge “Data copied (per GB)” has a user-confirmed per-GB interpretation. Databricks date filtering remains separate.
+**Current maintenance baseline:** AWS pricing comes from an existing configured table. Source period dates are audit-only; they do not filter AWS prices. BILLED is the default, LIST is explicit. The exact DataSync charge “Data copied (per GB)” has a user-confirmed per-GB interpretation. Databricks date filtering remains separate. Duplicate AWS matches are resolved in code by selecting the first usable row ordered by source row ID and stable rate fields. Selection counts and the chosen row are audited; no source rows are deleted. Genie instructions handle presentation, not these pricing rules.
 
 <div class="page-break"></div>
 
@@ -177,7 +177,7 @@ The placeholder ID must be replaced. Sort function entries by `(id, identifier)`
 | New functionality | Independently checked quantity, unit, rate and result. |
 | Missing/invalid inputs | Correct questions; no completed estimate before blocking issues are resolved. |
 | Scope states | Included/excluded/not-applicable behavior; conflicts handled. |
-| Pricing | Table-derived billed/list rates, unit conversions, missing/duplicate rates. AWS periods must remain audit-only unless policy changes. |
+| Pricing | Table-derived billed/list rates, unit conversions, missing rates and deterministic selection of one usable duplicate. AWS periods must remain audit-only unless policy changes. |
 | Scenario behavior | LOW/EXPECTED/HIGH and STRESS when requested/supported; no scenario double-counting. |
 | Totals and breakdown | Reconcile unrounded included costs; separate recurring and one-time costs. |
 | Fresh Genie conversation | Correct tool selection and clear presentation, including pending costs. |

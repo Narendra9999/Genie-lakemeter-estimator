@@ -13,7 +13,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP Smart Estimation Calculator v4.0.2 (notebooks/dcp_estimator.py, embedded verbatim) as a Unity Catalog function. Runs the input check first (named = true: named use case, validate only; false: ad-hoc or pasted JSON, every required input; NULL: no check) and returns status NEEDS_INPUT with one question per missing or invalid input instead of pricing. Otherwise builds the request (preset or JSON, plus what-if overrides), prices it only with the supplied rate card, and returns the full result JSON or status REJECTED with the calculator validation errors. Internal: call through dcp_calc_totals / dcp_calc_line_items / dcp_calc_details.'
 AS $$
 import sys, types, textwrap
-KEY = "20e7072917"
+KEY = "52a60b656a"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -1665,15 +1665,33 @@ def confirmed_datasync_unit(row, mapping):
             and row.get('charge_type') == 'Data copied (per GB)'
             and row.get('price_unit') == 'per unit (unit not reported)')
 
-def select_rate(rows, mapping, as_of, basis='BILLED'):
-    """Pure reference implementation used to test SQL mapping and unit conversion."""
-    if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
+def matching_rows(rows, mapping):
     service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
-    if len(matches)!=1:return None
-    row=matches[0];rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
-    if (row['price_unit']!=price_unit and not confirmed_datasync_unit(row, mapping)) or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
-    return rate*factor
+    return [r for r in rows if r['service_name']==name and r['region']=='us-east-1'
+            and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
+
+def usable_row(row, mapping, basis):
+    rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
+    return ((row.get('price_unit')==mapping[7] or confirmed_datasync_unit(row,mapping))
+            and rate is not None and rate>=0
+            and (row.get('rate_status') or '').startswith('REFERENCE_ONLY'))
+
+def row_order(row, basis):
+    # Same ordering as SQL: independent of input ordering and source periods.
+    number=lambda key: row[key] if row.get(key) is not None else -1
+    return (row.get('source_row_id') or '', row.get('price_unit') or '',
+            number('billed_rate' if basis=='BILLED' else 'list_price'),
+            number('list_price'), number('billed_rate'), row.get('rate_status') or '')
+
+def choose_row(rows, mapping, basis):
+    if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
+    usable=[r for r in matching_rows(rows,mapping) if usable_row(r,mapping,basis)]
+    return min(usable,key=lambda row:row_order(row,basis)) if usable else None
+
+def select_rate(rows, mapping, as_of=None, basis='BILLED'):
+    """Compatibility as_of is ignored. Select one usable row deterministically."""
+    row=choose_row(rows,mapping,basis)
+    return row['billed_rate' if basis=='BILLED' else 'list_price']*mapping[-1] if row is not None else None
 
 def apply_aws_rates(request, rates):
     """Select exact AWS records without filtering source dates before constructing the pricing provider."""
@@ -1687,10 +1705,11 @@ def apply_aws_rates(request, rates):
     result=dict(rates,as_of=as_of,rows=[x for x in rates['rows'] if x['provider']!='AWS'])
     for mapping in MAPPINGS:
         service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-        value=select_rate(rates['aws_rows'],mapping,as_of,basis)
-        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge]
-        source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in candidates]
-        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,period_validation_applied=False,unit_factor=factor,unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if any(confirmed_datasync_unit(x, mapping) for x in candidates) else None,source_rows=source))))
+        candidates=matching_rows(rates['aws_rows'],mapping)
+        chosen=choose_row(candidates,mapping,basis)
+        value=chosen['billed_rate' if basis=='BILLED' else 'list_price']*factor if chosen is not None else None
+        source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in ([chosen] if chosen is not None else [])]
+        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; row='+(chosen.get('source_row_id') or 'UNIDENTIFIED' if chosen is not None else 'NONE'),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,period_validation_applied=False,unit_factor=factor,match_count=len(candidates),usable_match_count=sum(usable_row(x,mapping,basis) for x in candidates),selection_rule='first usable row ordered by source_row_id, price_unit, selected_rate, list_price, billed_rate, rate_status',unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if chosen is not None and confirmed_datasync_unit(chosen,mapping) else None,source_rows=source))))
     result['source']=rates.get('source','')+'; aws_pricing_list; basis='+basis+'; as_of='+as_of
     return result
 
@@ -2194,7 +2213,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP input check (calculator v4.0.2, calculator/dcp_adapter.py check): lists every required input that is missing (no calculator default, so the cost would be PENDING), every value of the wrong type or out of range, and anything the calculator would reject. Returns status READY or NEEDS_INPUT. Internal: call through dcp_check_inputs.'
 AS $$
 import sys, types, textwrap
-KEY = "20e7072917"
+KEY = "52a60b656a"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -3846,15 +3865,33 @@ def confirmed_datasync_unit(row, mapping):
             and row.get('charge_type') == 'Data copied (per GB)'
             and row.get('price_unit') == 'per unit (unit not reported)')
 
-def select_rate(rows, mapping, as_of, basis='BILLED'):
-    """Pure reference implementation used to test SQL mapping and unit conversion."""
-    if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
+def matching_rows(rows, mapping):
     service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
-    if len(matches)!=1:return None
-    row=matches[0];rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
-    if (row['price_unit']!=price_unit and not confirmed_datasync_unit(row, mapping)) or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
-    return rate*factor
+    return [r for r in rows if r['service_name']==name and r['region']=='us-east-1'
+            and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
+
+def usable_row(row, mapping, basis):
+    rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
+    return ((row.get('price_unit')==mapping[7] or confirmed_datasync_unit(row,mapping))
+            and rate is not None and rate>=0
+            and (row.get('rate_status') or '').startswith('REFERENCE_ONLY'))
+
+def row_order(row, basis):
+    # Same ordering as SQL: independent of input ordering and source periods.
+    number=lambda key: row[key] if row.get(key) is not None else -1
+    return (row.get('source_row_id') or '', row.get('price_unit') or '',
+            number('billed_rate' if basis=='BILLED' else 'list_price'),
+            number('list_price'), number('billed_rate'), row.get('rate_status') or '')
+
+def choose_row(rows, mapping, basis):
+    if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
+    usable=[r for r in matching_rows(rows,mapping) if usable_row(r,mapping,basis)]
+    return min(usable,key=lambda row:row_order(row,basis)) if usable else None
+
+def select_rate(rows, mapping, as_of=None, basis='BILLED'):
+    """Compatibility as_of is ignored. Select one usable row deterministically."""
+    row=choose_row(rows,mapping,basis)
+    return row['billed_rate' if basis=='BILLED' else 'list_price']*mapping[-1] if row is not None else None
 
 def apply_aws_rates(request, rates):
     """Select exact AWS records without filtering source dates before constructing the pricing provider."""
@@ -3868,10 +3905,11 @@ def apply_aws_rates(request, rates):
     result=dict(rates,as_of=as_of,rows=[x for x in rates['rows'] if x['provider']!='AWS'])
     for mapping in MAPPINGS:
         service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-        value=select_rate(rates['aws_rows'],mapping,as_of,basis)
-        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge]
-        source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in candidates]
-        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,period_validation_applied=False,unit_factor=factor,unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if any(confirmed_datasync_unit(x, mapping) for x in candidates) else None,source_rows=source))))
+        candidates=matching_rows(rates['aws_rows'],mapping)
+        chosen=choose_row(candidates,mapping,basis)
+        value=chosen['billed_rate' if basis=='BILLED' else 'list_price']*factor if chosen is not None else None
+        source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in ([chosen] if chosen is not None else [])]
+        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; row='+(chosen.get('source_row_id') or 'UNIDENTIFIED' if chosen is not None else 'NONE'),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,period_validation_applied=False,unit_factor=factor,match_count=len(candidates),usable_match_count=sum(usable_row(x,mapping,basis) for x in candidates),selection_rule='first usable row ordered by source_row_id, price_unit, selected_rate, list_price, billed_rate, rate_status',unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if chosen is not None and confirmed_datasync_unit(chosen,mapping) else None,source_rows=source))))
     result['source']=rates.get('source','')+'; aws_pricing_list; basis='+basis+'; as_of='+as_of
     return result
 
@@ -4453,7 +4491,7 @@ RETURN to_json(named_struct(
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_rates_json()
 RETURNS STRING
-COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units and BILLED or LIST basis; source period dates are audit-only. No AWS registry fallback.'
+COMMENT 'Internal pricing data assembly for the DCP calculator.'
 RETURN
  SELECT to_json(named_struct('as_of',cast(current_date() AS STRING),
  'source','dcp_rate_card (Databricks); aws_pricing_list (AWS)',
@@ -4468,7 +4506,7 @@ RETURN
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_calc_run(p_use_case STRING DEFAULT NULL, p_request STRING DEFAULT NULL, p_overrides STRING DEFAULT NULL)
 RETURNS TABLE(use_case_id STRING, result STRING)
-COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.basis selects BILLED (default) or LIST. AWS source period dates and request as_of do not restrict AWS rate selection. Missing or ambiguous AWS rates stay PENDING; never substitute registry prices. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. ''{"migration_gb": 8000, "retained_storage_tb": 8}'' for a preset use case or dotted paths such as ''{"transfer.daily_gb_high": 12}''.'
+COMMENT 'Internal: resolve the workload, prepare pricing and run the DCP calculator. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. ''{"migration_gb": 8000, "retained_storage_tb": 8}'' for a preset use case or dotted paths such as ''{"transfer.daily_gb_high": 12}''.'
 RETURN
  WITH p AS (SELECT CASE WHEN upper(trim(p_use_case)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_use_case END AS uc, CASE WHEN upper(trim(p_request)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_request END AS rq, CASE WHEN upper(trim(p_overrides)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_overrides END AS ov),
   req AS (
