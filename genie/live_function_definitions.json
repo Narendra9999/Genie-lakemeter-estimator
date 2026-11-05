@@ -155,49 +155,49 @@
     "comment": "Internal: resolve the workload, prepare pricing and run the DCP calculator. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}' for a preset use case or dotted paths such as '{\"transfer.daily_gb_high\": 12}'."
   },
   "dcp_check_inputs": {
-    "comment": "ALWAYS CALL FIRST for any new DCP estimate request (pasted JSON or facts in prose), before dcp_calc_totals. DCP input validation as rows; it does not price. Returns one direct question per missing or invalid input and every unconfirmed area state. status READY means required inputs are valid; NEEDS_INPUT means ask each blocking row's question verbatim and wait for the answers. Nonblocking RANGE_BOUND_MISSING rows leave that scenario PENDING. Only on READY, calculate with dcp_calc_totals using the same request. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). A pasted request JSON goes in p_request verbatim. Optional p_overrides = JSON what-if map, e.g. '{\"migration_gb\": 8000, \"retained_storage_tb\": 8}' for a preset use case or dotted paths such as '{\"transfer.daily_gb_high\": 12}'.",
-    "data_type": "TABLE_TYPE",
-    "full_data_type": "(use_case_id STRING, status STRING, section STRING, component_id STRING, field STRING, issue STRING, blocking BOOLEAN, expected STRING, received STRING, question STRING)",
+    "name": "dcp_check_inputs",
     "input_params": {
       "parameters": [
         {
           "name": "p_use_case",
-          "parameter_default": "NULL",
-          "parameter_type": "PARAM",
-          "position": 0,
+          "type_text": "string",
           "type_json": "{\"name\":\"p_use_case\",\"type\":\"string\",\"nullable\":true,\"metadata\":{\"default\":\"NULL\"}}",
           "type_name": "STRING",
           "type_precision": 0,
           "type_scale": 0,
-          "type_text": "string"
+          "position": 0,
+          "parameter_type": "PARAM",
+          "parameter_default": "NULL"
         },
         {
           "name": "p_request",
-          "parameter_default": "NULL",
-          "parameter_type": "PARAM",
-          "position": 1,
+          "type_text": "string",
           "type_json": "{\"name\":\"p_request\",\"type\":\"string\",\"nullable\":true,\"metadata\":{\"default\":\"NULL\"}}",
           "type_name": "STRING",
           "type_precision": 0,
           "type_scale": 0,
-          "type_text": "string"
+          "position": 1,
+          "parameter_type": "PARAM",
+          "parameter_default": "NULL"
         },
         {
           "name": "p_overrides",
-          "parameter_default": "NULL",
-          "parameter_type": "PARAM",
-          "position": 2,
+          "type_text": "string",
           "type_json": "{\"name\":\"p_overrides\",\"type\":\"string\",\"nullable\":true,\"metadata\":{\"default\":\"NULL\"}}",
           "type_name": "STRING",
           "type_precision": 0,
           "type_scale": 0,
-          "type_text": "string"
+          "position": 2,
+          "parameter_type": "PARAM",
+          "parameter_default": "NULL"
         }
       ]
     },
-    "name": "dcp_check_inputs",
+    "data_type": "TABLE_TYPE",
+    "full_data_type": "(use_case_id STRING, status STRING, section STRING, component_id STRING, field STRING, issue STRING, blocking BOOLEAN, expected STRING, received STRING, question STRING)",
     "routine_body": "SQL",
-    "routine_definition": "WITH p AS (SELECT CASE WHEN upper(trim(p_use_case)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_use_case END AS uc, CASE WHEN upper(trim(p_request)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_request END AS rq, CASE WHEN upper(trim(p_overrides)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_overrides END AS ov),\n  req AS (\n    SELECT coalesce(get_json_object(p.rq, '$.use_case_id'), 'ADHOC') AS use_case_id, p.rq AS r, p.ov, false AS named FROM p WHERE p.rq IS NOT NULL\n    UNION ALL\n    SELECT use_case_id, request_json, ov, true FROM (\n      SELECT q.use_case_id, q.request_json, p.ov, m.rnk, count(*) OVER (PARTITION BY m.rnk) AS n_at_rank, min(m.rnk) OVER () AS best\n      FROM __FQ__.dcp_requests q JOIN p ON p.rq IS NULL\n      LATERAL VIEW explode(array(\n        CASE WHEN upper(trim(q.use_case_id)) = upper(trim(p.uc)) OR upper(trim(q.use_case_name)) = upper(trim(p.uc)) THEN 1\n             WHEN startswith(upper(q.use_case_id), upper(trim(p.uc))) OR startswith(upper(q.use_case_name), upper(trim(p.uc))) THEN 2 END)) m AS rnk\n      WHERE m.rnk IS NOT NULL)\n    WHERE rnk = best AND n_at_rank = 1),\n  chk AS (SELECT req.use_case_id, from_json(__FQ__.dcp_check(req.r, req.ov, req.named),\n                 'struct<status:string,issues:array<struct<section:string,component_id:string,field:string,issue:string,blocking:boolean,expected:string,received:string,question:string>>>') AS j\n          FROM req)\n  SELECT chk.use_case_id, chk.j.status, i.section, i.component_id, i.field, i.issue, i.blocking, i.expected, i.received, i.question\n  FROM chk LATERAL VIEW OUTER explode(chk.j.issues) x AS i\n  UNION ALL\n  SELECT p.uc, 'UNKNOWN_USE_CASE', 'request', NULL, 'p_use_case', 'UNKNOWN_USE_CASE', true, 'a loaded use case id or name', p.uc,\n         'No single loaded use case matches this name. Which use case is it (SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests)?'\n  FROM p WHERE p.rq IS NULL AND NOT EXISTS (SELECT 1 FROM req)"
+    "routine_definition": "WITH p AS (SELECT CASE WHEN upper(trim(p_use_case)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_use_case END AS uc, CASE WHEN upper(trim(p_request)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_request END AS rq, CASE WHEN upper(trim(p_overrides)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_overrides END AS ov),\n  req AS (\n    SELECT coalesce(get_json_object(p.rq, '$.use_case_id'), 'ADHOC') AS use_case_id, p.rq AS r, p.ov, false AS named FROM p WHERE p.rq IS NOT NULL\n    UNION ALL\n    SELECT use_case_id, request_json, ov, true FROM (\n      SELECT q.use_case_id, q.request_json, p.ov, m.rnk, count(*) OVER (PARTITION BY m.rnk) AS n_at_rank, min(m.rnk) OVER () AS best\n      FROM __FQ__.dcp_requests q JOIN p ON p.rq IS NULL\n      LATERAL VIEW explode(array(\n        CASE WHEN upper(trim(q.use_case_id)) = upper(trim(p.uc)) OR upper(trim(q.use_case_name)) = upper(trim(p.uc)) THEN 1\n             WHEN startswith(upper(q.use_case_id), upper(trim(p.uc))) OR startswith(upper(q.use_case_name), upper(trim(p.uc))) THEN 2 END)) m AS rnk\n      WHERE m.rnk IS NOT NULL)\n    WHERE rnk = best AND n_at_rank = 1),\n  chk AS (SELECT req.use_case_id, from_json(__FQ__.dcp_check(req.r, req.ov, req.named),\n                 'struct<status:string,issues:array<struct<section:string,component_id:string,field:string,issue:string,blocking:boolean,expected:string,received:string,question:string>>>') AS j\n          FROM req)\n  SELECT chk.use_case_id, chk.j.status, i.section, i.component_id, i.field, i.issue, i.blocking, i.expected, i.received, i.question\n  FROM chk LATERAL VIEW OUTER explode(chk.j.issues) x AS i\n  UNION ALL\n  SELECT p.uc, 'UNKNOWN_USE_CASE', 'request', NULL, 'p_use_case', 'UNKNOWN_USE_CASE', true, 'a loaded use case id or name', p.uc,\n         'No single loaded use case matches this name. Which use case is it (SELECT use_case_id, use_case_name FROM __FQ__.dcp_requests)?'\n  FROM p WHERE p.rq IS NULL AND NOT EXISTS (SELECT 1 FROM req)",
+    "comment": "Internal final validation of a complete structured DCP request before estimation. Not an intake or discovery function. Do not select this function as the answer to an incomplete natural-language estimate request: ask missing-input questions in prose first. p_request must contain a valid workload JSON object, not user sentences or conversation text; for prose build structured JSON with dcp_request. Use p_use_case only for an existing named preset. Omit unused arguments entirely; never pass the string NULL. Returns READY or structured validation issues for internal use. On READY call dcp_calc_totals; if issues remain explain them in plain language and ask only for unresolved inputs. Never present the validation rows as the user-facing answer."
   },
   "dcp_calc": {
     "name": "dcp_calc",

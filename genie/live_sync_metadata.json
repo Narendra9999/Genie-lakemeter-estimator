@@ -1,11 +1,11 @@
 {
   "space_id": "01f1d6efcecd1620b04cf487817675b7",
-  "update_time": "2026-11-05T18:12:23.544Z",
-  "etag": "f5272bcfc1208e80367532062d17da237d7d86ea265a7cd7699cdd499701f4a5",
+  "update_time": "2026-11-05T20:57:26.517Z",
+  "etag": "7fbaa7dd3c937bff92db29abfeaaf1325352235f4f21ef47a721c6c3f4a44122",
   "source_schema": "fevm_catalog_naren.dcp_estimator",
   "source_profile": "fevm-naren",
-  "direction": "aws_rule_enforcement_refactor_and_readback",
+  "direction": "tested_translation_policy_to_live_then_readback",
   "source_agent_modified": true,
-  "aws_period_validation_enabled": false,
-  "duplicate_selection": "first usable ordered by source_row_id and stable rate fields"
+  "updated_uc_functions": [],
+  "change": "Approved JSON formatting mappings and explicit prepared-request confirmation; strict calculator unchanged."
 }
