@@ -1,15 +1,10 @@
 {
   "space_id": "01f1d6efcecd1620b04cf487817675b7",
-  "update_time": "2026-11-04T20:13:40.147Z",
-  "etag": "78569b51f60d27e236f8c24260fc201aa16f8f652f85e3d81059d238040242e7",
+  "update_time": "2026-11-05T12:23:54.164Z",
+  "etag": "871153cfe0353527ee80a619e8e7d6a485a4e5ed710076ef5a598876d68b0df4",
   "source_schema": "fevm_catalog_naren.dcp_estimator",
   "source_profile": "fevm-naren",
-  "direction": "aws_pricing_deployment_and_readback",
+  "direction": "aws_period_validation_removal_and_readback",
   "source_agent_modified": true,
-  "preserved_existing_registrations": 9,
-  "added_registrations": [
-    "dcp_aws_rates",
-    "dcp_rates_json"
-  ],
-  "rate_validity_confirmed_by_user": true
+  "aws_period_validation_enabled": false
 }

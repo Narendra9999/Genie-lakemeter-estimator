@@ -1,4 +1,4 @@
-"""Guard exact AWS source selection, validity and calculator-unit conversion."""
+"""Guard exact AWS source selection, audit-only dates and calculator-unit conversion."""
 import csv
 import importlib.util
 from pathlib import Path
@@ -21,13 +21,14 @@ class AwsPricingTests(unittest.TestCase):
         self.assertEqual(len({x['source_row_id'] for x in self.rows}),8151)
         self.assertAlmostEqual(90*lookup.select_rate(self.rows,self.storage,'2026-09-01'),0.8996454)
         self.assertAlmostEqual(90*lookup.select_rate(self.rows,self.storage,'2026-09-01','LIST'),1.5240096)
-    def test_inclusive_dates_and_expiry(self):
+    def test_source_dates_do_not_restrict_selection(self):
         for day in ('2026-06-01','2026-09-30'): self.assertIsNotNone(lookup.select_rate(self.rows,self.storage,day))
-        for day in ('2026-05-31','2026-10-01','2026-11-04'): self.assertIsNone(lookup.select_rate(self.rows,self.storage,day))
-    def test_unit_conversion_and_unknown_datasync(self):
+        for day in ('2026-05-31','2026-10-01','2026-11-04'): self.assertIsNotNone(lookup.select_rate(self.rows,self.storage,day))
+    def test_unit_conversion_and_confirmed_datasync(self):
         kms=next(m for m in lookup.MAPPINGS if m[1]=='KMS-Requests')
         self.assertAlmostEqual(lookup.select_rate(self.rows,kms,'2026-09-01'),0.0111425)
-        self.assertIsNone(lookup.select_rate(self.rows,lookup.MAPPINGS[0],'2026-09-01'))
+        self.assertAlmostEqual(lookup.select_rate(self.rows,lookup.MAPPINGS[0],'2026-09-01'),0.00395004)
+        self.assertAlmostEqual(lookup.select_rate(self.rows,lookup.MAPPINGS[0],'2026-09-01','LIST'),0.00695098)
     def test_exact_matches_duplicates_and_zero(self):
         row=next(dict(x) for x in self.rows if x['usage_type']=='TimedStorage-ByteHrs' and x['region']=='us-east-1' and x['s3_storage_class']=='Standard')
         for field,value in [('region','us-west-2'),('s3_storage_class','Glacier'),('usage_type','USE2-TimedStorage-ByteHrs'),('price_unit','unknown')]:
@@ -41,6 +42,23 @@ class AwsPricingTests(unittest.TestCase):
         storage=next(x for x in result['rows'] if x['sku']=='TimedStorage-ByteHrs')
         self.assertEqual(storage['rate'],0.01693344)
         self.assertIn('source_row_id',storage['notes'])
-        self.assertTrue(all(x['status']=='PENDING' and x['rate'] is None for x in lookup.apply_aws_rates({},rates)['rows']))
-        for meta in ({'as_of':'bad'},{'basis':'unsupported'}):
+        self.assertEqual(next(x for x in lookup.apply_aws_rates({},rates)['rows'] if x['sku']=='TimedStorage-ByteHrs')['rate'],0.00999606)
+        self.assertEqual(result['as_of'],rates['as_of'])
+        self.assertEqual(lookup.apply_aws_rates({'_aws_pricing':{'as_of':'bad'}},rates)['as_of'],rates['as_of'])
+        for meta in ({'basis':'unsupported'},):
             with self.assertRaises(ValueError):lookup.apply_aws_rates({'_aws_pricing':meta},rates)
+
+    def test_missing_or_reversed_periods_are_audit_only(self):
+        row=next(dict(x) for x in self.rows if x['usage_type']=='TimedStorage-ByteHrs' and x['region']=='us-east-1' and x['s3_storage_class']=='Standard')
+        for dates in ({'period_start':None,'period_end':None},{'period_start':'2027-01-01','period_end':'2020-01-01'}):
+            self.assertEqual(lookup.select_rate([{**row,**dates}],self.storage,'2026-11-04'),row['billed_rate'])
+        self.assertIsNone(lookup.select_rate([row,{**row,'period_start':'2027-01-01','period_end':'2027-12-31'}],self.storage,'2026-11-04'))
+
+    def test_datasync_confirmation_is_limited_to_exact_charge_and_unknown_unit(self):
+        row=next(dict(x) for x in self.rows if x['service_name']=='AWS DataSync' and x['usage_type']=='USE1-Transferred-Bytes' and x['region']=='us-east-1' and x['charge_type']=='Data copied (per GB)')
+        for field,value in [('charge_type','Other transfer'),('price_unit','per hour'),('region','us-west-2')]:
+            self.assertIsNone(lookup.select_rate([{**row,field:value}],lookup.MAPPINGS[0],'2026-11-05'))
+        result=lookup.apply_aws_rates({},dict(as_of='2026-11-05',source='test',rows=[],aws_rows=[row]))
+        rate=next(x for x in result['rows'] if x['service']=='DATASYNC')
+        self.assertIn('User confirmed',rate['notes'])
+        self.assertIn('per unit (unit not reported)',rate['notes'])

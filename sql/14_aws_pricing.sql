@@ -4,13 +4,13 @@ CREATE TABLE IF NOT EXISTS __FQ__.aws_pricing_list (
  list_price DOUBLE, billed_rate DOUBLE, rate_status STRING, period_start DATE, period_end DATE,
  source_file STRING, source_file_sha256 STRING, source_row_number INT, source_row_id STRING, loaded_at TIMESTAMP)
 USING DELTA
-COMMENT 'Cloudability-derived AWS reference rates. User-confirmed validity dates: period_start and period_end inclusive. Preserve reference status; never extrapolate outside validity windows.'
+COMMENT 'Cloudability-derived AWS reference rates. Source period_start/end retained for audit only; date validation is disabled. Preserve reference status.'
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_aws_rates(p_as_of DATE, p_basis STRING)
 RETURNS TABLE(provider STRING, service STRING, sku STRING, unit STRING, region STRING,
  rate DOUBLE, status STRING, source STRING, effective_start STRING, effective_end STRING,
  observed_rate DOUBLE, notes STRING)
-COMMENT 'Exact AWS reference-rate lookup. BILLED selects billed_rate; LIST selects list_price. Both remain REFERENCE_ONLY. Date must fall within a single confirmed validity window. No stale, ambiguous, unknown-unit or registry fallback. S3 currently Standard in us-east-1 only. KMS per-1000 request prices normalize to calculator per-10000 units.'
+COMMENT 'Exact AWS reference-rate lookup. BILLED selects billed_rate; LIST selects list_price. Both remain REFERENCE_ONLY. Source period dates are audit-only; p_as_of is retained for compatibility and ignored for AWS rate selection. DataSync Data copied (per GB) is user-confirmed per GB when source unit is unreported. No ambiguous, other unknown-unit or registry fallback. S3 currently Standard in us-east-1 only. KMS per-1000 request prices normalize to calculator per-10000 units.'
 RETURN
 WITH mappings AS (SELECT * FROM VALUES
 ('DATASYNC','DataSync-Bytes','GB','AWS DataSync','USE1-Transferred-Bytes',NULL,'Data copied (per GB)','per GB',1),
@@ -23,7 +23,7 @@ WITH mappings AS (SELECT * FROM VALUES
 candidates AS (
  SELECT a.*, b.basis, CASE WHEN b.basis='BILLED' THEN a.billed_rate ELSE a.list_price END AS selected_rate
  FROM __FQ__.aws_pricing_list a CROSS JOIN (SELECT * FROM VALUES ('BILLED'),('LIST') AS b(basis)) b
- WHERE b.basis=p_basis AND p_as_of BETWEEN a.period_start AND a.period_end),
+ WHERE b.basis=p_basis),
 matched AS (
  SELECT m.*, count(a.source_row_id) OVER (PARTITION BY m.sku) AS match_count,
  a.source_row_id, a.price_unit AS actual_unit, a.rate_status, a.period_start, a.period_end,
@@ -33,16 +33,17 @@ matched AS (
  AND a.s3_storage_class <=> m.storage_class AND a.charge_type=m.charge_type
 ),
 resolved AS (
- SELECT *, match_count=1 AND actual_unit=price_unit AND selected_rate>=0
+ SELECT *, match_count=1 AND (actual_unit=price_unit OR (service='DATASYNC' AND sku='DataSync-Bytes' AND charge_type='Data copied (per GB)' AND actual_unit='per unit (unit not reported)')) AND selected_rate>=0
  AND rate_status LIKE 'REFERENCE_ONLY%' AS usable FROM matched)
 SELECT DISTINCT 'AWS', service, sku, unit, 'US_EAST_1',
  CASE WHEN usable THEN selected_rate*unit_factor END,
  CASE WHEN usable THEN 'REFERENCE_ONLY' ELSE 'PENDING' END,
  concat('__FQ__.aws_pricing_list; basis=',coalesce(basis,'UNRESOLVED'),'; source_row_id=',coalesce(source_row_id,'NONE')),
- cast(period_start AS STRING), cast(date_add(period_end,1) AS STRING),
+ '0001-01-01', cast(NULL AS STRING),
  CASE WHEN usable THEN list_price*unit_factor END,
- to_json(named_struct('basis',basis,'valid_from',period_start,'valid_through_inclusive',period_end,
+ to_json(named_struct('basis',basis,'source_period_start',period_start,'source_period_end',period_end,'period_validation_applied',false,
+ 'unit_confirmation',CASE WHEN service='DATASYNC' AND actual_unit='per unit (unit not reported)' THEN 'User confirmed Data copied (per GB) is priced per GB' END,
  'source_status',rate_status,'price_unit',actual_unit,'calculator_unit',unit,'unit_factor',unit_factor,
  'matches',match_count,'list_price',list_price,'billed_rate',billed_rate,
- 'warning',CASE WHEN usable THEN 'Cloudability-derived reference within user-confirmed validity window.' ELSE 'PENDING: missing/ambiguous validity window, unsupported price unit, invalid basis or unusable rate. No fallback.' END))
+ 'warning',CASE WHEN usable THEN 'Cloudability-derived reference; source period date validation disabled.' ELSE 'PENDING: missing/ambiguous matching row, unsupported price unit, invalid basis or unusable rate. No fallback.' END))
 FROM resolved

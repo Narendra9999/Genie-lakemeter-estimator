@@ -13,7 +13,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP Smart Estimation Calculator v4.0.2 (notebooks/dcp_estimator.py, embedded verbatim) as a Unity Catalog function. Runs the input check first (named = true: named use case, validate only; false: ad-hoc or pasted JSON, every required input; NULL: no check) and returns status NEEDS_INPUT with one question per missing or invalid input instead of pricing. Otherwise builds the request (preset or JSON, plus what-if overrides), prices it only with the supplied rate card, and returns the full result JSON or status REJECTED with the calculator validation errors. Internal: call through dcp_calc_totals / dcp_calc_line_items / dcp_calc_details.'
 AS $$
 import sys, types, textwrap
-KEY = "5a1f736d87"
+KEY = "20e7072917"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -1646,8 +1646,7 @@ def calibrate_from_system_tables(spark, workspace_id: str, lookback_days: int = 
 
 '''
 DCP_SOURCE_1 = r'''
-"""Exact AWS billing-reference lookup; user-confirmed inclusive validity windows."""
-from datetime import date
+"""Exact AWS billing-reference lookup; source period dates retained for audit only."""
 import json
 
 MAPPINGS = [
@@ -1659,34 +1658,39 @@ MAPPINGS = [
  ('KMS','KMS-Keys','KEY_MONTH','AWS Key Management Service','us-east-1-KMS-Keys',None,'KMS key storage','per key-month',1),
 ]
 
+def confirmed_datasync_unit(row, mapping):
+    """User-confirmed link: this exact DataSync charge is per GB."""
+    return (mapping == MAPPINGS[0] and row.get('service_name') == mapping[3]
+            and row.get('region') == 'us-east-1' and row.get('usage_type') == mapping[4]
+            and row.get('charge_type') == 'Data copied (per GB)'
+            and row.get('price_unit') == 'per unit (unit not reported)')
+
 def select_rate(rows, mapping, as_of, basis='BILLED'):
     """Pure reference implementation used to test SQL mapping and unit conversion."""
-    date.fromisoformat(as_of)
     if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
     service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge and r['period_start']<=as_of<=r['period_end']]
+    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
     if len(matches)!=1:return None
     row=matches[0];rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
-    if row['price_unit']!=price_unit or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
+    if (row['price_unit']!=price_unit and not confirmed_datasync_unit(row, mapping)) or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
     return rate*factor
 
 def apply_aws_rates(request, rates):
-    """Select exact, dated AWS records before constructing the pricing provider."""
+    """Select exact AWS records without filtering source dates before constructing the pricing provider."""
     if 'aws_rows' not in rates:
         return rates
     meta=request.get('_aws_pricing') or {}
     if not isinstance(meta,dict): raise ValueError('_aws_pricing must be an object')
-    as_of=meta.get('as_of',rates['as_of'])
-    date.fromisoformat(as_of)
+    as_of=rates['as_of']  # AWS request as_of is ignored; preserve Databricks pricing date.
     basis=str(meta.get('basis','BILLED')).upper()
     if basis not in ('BILLED','LIST'): raise ValueError('AWS basis must be BILLED or LIST')
     result=dict(rates,as_of=as_of,rows=[x for x in rates['rows'] if x['provider']!='AWS'])
     for mapping in MAPPINGS:
         service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
         value=select_rate(rates['aws_rows'],mapping,as_of,basis)
-        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge and x['period_start']<=as_of<=x['period_end']]
+        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge]
         source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in candidates]
-        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,validity_end_inclusive=True,unit_factor=factor,source_rows=source))))
+        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,period_validation_applied=False,unit_factor=factor,unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if any(confirmed_datasync_unit(x, mapping) for x in candidates) else None,source_rows=source))))
     result['source']=rates.get('source','')+'; aws_pricing_list; basis='+basis+'; as_of='+as_of
     return result
 
@@ -2190,7 +2194,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP input check (calculator v4.0.2, calculator/dcp_adapter.py check): lists every required input that is missing (no calculator default, so the cost would be PENDING), every value of the wrong type or out of range, and anything the calculator would reject. Returns status READY or NEEDS_INPUT. Internal: call through dcp_check_inputs.'
 AS $$
 import sys, types, textwrap
-KEY = "5a1f736d87"
+KEY = "20e7072917"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -3823,8 +3827,7 @@ def calibrate_from_system_tables(spark, workspace_id: str, lookback_days: int = 
 
 '''
 DCP_SOURCE_1 = r'''
-"""Exact AWS billing-reference lookup; user-confirmed inclusive validity windows."""
-from datetime import date
+"""Exact AWS billing-reference lookup; source period dates retained for audit only."""
 import json
 
 MAPPINGS = [
@@ -3836,34 +3839,39 @@ MAPPINGS = [
  ('KMS','KMS-Keys','KEY_MONTH','AWS Key Management Service','us-east-1-KMS-Keys',None,'KMS key storage','per key-month',1),
 ]
 
+def confirmed_datasync_unit(row, mapping):
+    """User-confirmed link: this exact DataSync charge is per GB."""
+    return (mapping == MAPPINGS[0] and row.get('service_name') == mapping[3]
+            and row.get('region') == 'us-east-1' and row.get('usage_type') == mapping[4]
+            and row.get('charge_type') == 'Data copied (per GB)'
+            and row.get('price_unit') == 'per unit (unit not reported)')
+
 def select_rate(rows, mapping, as_of, basis='BILLED'):
     """Pure reference implementation used to test SQL mapping and unit conversion."""
-    date.fromisoformat(as_of)
     if basis not in ('BILLED','LIST'): raise ValueError('basis must be BILLED or LIST')
     service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
-    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge and r['period_start']<=as_of<=r['period_end']]
+    matches=[r for r in rows if r['service_name']==name and r['region']=='us-east-1' and r['usage_type']==usage and r.get('s3_storage_class')==storage and r['charge_type']==charge]
     if len(matches)!=1:return None
     row=matches[0];rate=row.get('billed_rate' if basis=='BILLED' else 'list_price')
-    if row['price_unit']!=price_unit or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
+    if (row['price_unit']!=price_unit and not confirmed_datasync_unit(row, mapping)) or rate is None or rate<0 or not (row.get('rate_status') or '').startswith('REFERENCE_ONLY'):return None
     return rate*factor
 
 def apply_aws_rates(request, rates):
-    """Select exact, dated AWS records before constructing the pricing provider."""
+    """Select exact AWS records without filtering source dates before constructing the pricing provider."""
     if 'aws_rows' not in rates:
         return rates
     meta=request.get('_aws_pricing') or {}
     if not isinstance(meta,dict): raise ValueError('_aws_pricing must be an object')
-    as_of=meta.get('as_of',rates['as_of'])
-    date.fromisoformat(as_of)
+    as_of=rates['as_of']  # AWS request as_of is ignored; preserve Databricks pricing date.
     basis=str(meta.get('basis','BILLED')).upper()
     if basis not in ('BILLED','LIST'): raise ValueError('AWS basis must be BILLED or LIST')
     result=dict(rates,as_of=as_of,rows=[x for x in rates['rows'] if x['provider']!='AWS'])
     for mapping in MAPPINGS:
         service,sku,unit,name,usage,storage,charge,price_unit,factor=mapping
         value=select_rate(rates['aws_rows'],mapping,as_of,basis)
-        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge and x['period_start']<=as_of<=x['period_end']]
+        candidates=[x for x in rates['aws_rows'] if x['service_name']==name and x['region']=='us-east-1' and x['usage_type']==usage and x.get('s3_storage_class')==storage and x['charge_type']==charge]
         source=[{k:x.get(k) for k in ('source_row_id','period_start','period_end','price_unit','list_price','billed_rate','rate_status')} for x in candidates]
-        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,validity_end_inclusive=True,unit_factor=factor,source_rows=source))))
+        result['rows'].append(dict(provider='AWS',service=service,sku=sku,unit=unit,region='US_EAST_1',rate=value,status='REFERENCE_ONLY' if value is not None else 'PENDING',source='aws_pricing_list; basis='+basis+'; rows='+','.join(x.get('source_row_id','') for x in candidates),effective_start=as_of,effective_end=None,observed_rate=None,notes=json.dumps(dict(basis=basis,as_of=as_of,period_validation_applied=False,unit_factor=factor,unit_confirmation="User confirmed Data copied (per GB) is priced per GB" if any(confirmed_datasync_unit(x, mapping) for x in candidates) else None,source_rows=source))))
     result['source']=rates.get('source','')+'; aws_pricing_list; basis='+basis+'; as_of='+as_of
     return result
 
@@ -4445,7 +4453,7 @@ RETURN to_json(named_struct(
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_rates_json()
 RETURNS STRING
-COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units, confirmed validity windows and BILLED or LIST basis. No AWS registry fallback.'
+COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units and BILLED or LIST basis; source period dates are audit-only. No AWS registry fallback.'
 RETURN
  SELECT to_json(named_struct('as_of',cast(current_date() AS STRING),
  'source','dcp_rate_card (Databricks); aws_pricing_list (AWS)',
@@ -4460,7 +4468,7 @@ RETURN
 -- @@
 CREATE OR REPLACE FUNCTION __FQ__.dcp_calc_run(p_use_case STRING DEFAULT NULL, p_request STRING DEFAULT NULL, p_overrides STRING DEFAULT NULL)
 RETURNS TABLE(use_case_id STRING, result STRING)
-COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.as_of selects a AWS rate-validity date and .basis selects BILLED (default) or LIST. A missing current AWS rate stays PENDING; never substitute registry or stale prices. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. ''{"migration_gb": 8000, "retained_storage_tb": 8}'' for a preset use case or dotted paths such as ''{"transfer.daily_gb_high": 12}''.'
+COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.basis selects BILLED (default) or LIST. AWS source period dates and request as_of do not restrict AWS rate selection. Missing or ambiguous AWS rates stay PENDING; never substitute registry prices. Input: EITHER p_use_case (a loaded use case id or business name, case-insensitive) OR p_request (built with dcp_request(...)). Optional p_overrides = JSON what-if map, e.g. ''{"migration_gb": 8000, "retained_storage_tb": 8}'' for a preset use case or dotted paths such as ''{"transfer.daily_gb_high": 12}''.'
 RETURN
  WITH p AS (SELECT CASE WHEN upper(trim(p_use_case)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_use_case END AS uc, CASE WHEN upper(trim(p_request)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_request END AS rq, CASE WHEN upper(trim(p_overrides)) IN ('', 'NULL', 'NONE', 'N/A') THEN NULL ELSE p_overrides END AS ov),
   req AS (

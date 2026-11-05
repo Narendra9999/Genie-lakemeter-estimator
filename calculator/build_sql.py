@@ -161,7 +161,7 @@ RETURN to_json(named_struct(
       'api_calls', p_one_time_api_calls, 'serving_mode', coalesce(upper({N('p_one_time_serving_mode')}), 'PAY_PER_TOKEN'))) END))""")
 stmts.append("""CREATE OR REPLACE FUNCTION __FQ__.dcp_rates_json()
 RETURNS STRING
-COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units, confirmed validity windows and BILLED or LIST basis. No AWS registry fallback.'
+COMMENT 'Internal rate assembly. Databricks rows use dcp_rate_card; AWS source rows use only aws_pricing_list. The Python adapter selects exact units and BILLED or LIST basis; source period dates are audit-only. No AWS registry fallback.'
 RETURN
  SELECT to_json(named_struct('as_of',cast(current_date() AS STRING),
  'source','dcp_rate_card (Databricks); aws_pricing_list (AWS)',
@@ -175,7 +175,7 @@ RETURN
  ('USE1-Transferred-Bytes','TimedStorage-ByteHrs','Requests-Tier1','Requests-Tier2','us-east-1-KMS-Requests','us-east-1-KMS-Keys'))))""")
 stmts.append(f"""CREATE OR REPLACE FUNCTION __FQ__.dcp_calc_run({ARGS})
 RETURNS TABLE(use_case_id STRING, result STRING)
-COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.as_of selects a AWS rate-validity date and .basis selects BILLED (default) or LIST. A missing current AWS rate stays PENDING; never substitute registry or stale prices. {WHO}'
+COMMENT 'Internal: resolve the request, assemble Databricks rates and exact AWS reference rates, and run the calculator. Optional p_request._aws_pricing.basis selects BILLED (default) or LIST. AWS source period dates and request as_of do not restrict AWS rate selection. Missing or ambiguous AWS rates stay PENDING; never substitute registry prices. {WHO}'
 RETURN
  WITH {RESOLVE}
  SELECT req.use_case_id, __FQ__.dcp_calc(req.r,

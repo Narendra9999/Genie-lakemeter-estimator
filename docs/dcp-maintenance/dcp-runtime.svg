@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="205" viewBox="0 0 760 205">
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#607d8b" stroke-width="1.4"/></marker></defs>
+<rect width="760" height="205" fill="#f3f7f8" rx="12"/>
+<g font-family="Arial, sans-serif" font-size="14" text-anchor="middle">
+<rect x="18" y="18" width="168" height="63" rx="7" fill="#143d46"/><text x="102" y="44" fill="white">Genie agent</text><text x="102" y="64" fill="#dce8eb" font-size="11">Inputs and presentation</text>
+<rect x="216" y="18" width="220" height="63" rx="7" fill="#143d46"/><text x="326" y="43" fill="white">UC SQL functions</text><text x="326" y="64" fill="#dce8eb" font-size="11">Check / totals / breakdown / details</text>
+<rect x="466" y="18" width="274" height="63" rx="7" fill="#143d46"/><text x="603" y="43" fill="white">Embedded Python bundle</text><text x="603" y="64" fill="#dce8eb" font-size="11">Adapter → calculator → engines</text>
+<path d="M186 49H211 M436 49H461" stroke="#607d8b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="466" y="119" width="274" height="63" rx="7" fill="white" stroke="#c7d7dc"/><text x="603" y="145" fill="#143d46">Table-derived pricing</text><text x="603" y="165" fill="#425b64" font-size="11">Databricks rate card + AWS table</text>
+<path d="M603 119V86" stroke="#607d8b" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="215" y="139" fill="#143d46" font-size="13">Build embeds source; deployment updates UC.</text><text x="215" y="161" fill="#425b64" font-size="12">Editing a local script does not update Genie.</text>
+</g></svg>
