@@ -1037,23 +1037,13 @@
     "input_params": {
       "parameters": [
         {
-          "name": "p_as_of",
-          "type_text": "date",
-          "type_json": "{\"name\":\"p_as_of\",\"type\":\"date\",\"nullable\":true,\"metadata\":{}}",
-          "type_name": "DATE",
-          "type_precision": 0,
-          "type_scale": 0,
-          "position": 0,
-          "parameter_type": "PARAM"
-        },
-        {
           "name": "p_basis",
           "type_text": "string",
           "type_json": "{\"name\":\"p_basis\",\"type\":\"string\",\"nullable\":true,\"metadata\":{}}",
           "type_name": "STRING",
           "type_precision": 0,
           "type_scale": 0,
-          "position": 1,
+          "position": 0,
           "parameter_type": "PARAM"
         }
       ]

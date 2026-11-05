@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS __FQ__.aws_pricing_list (
 USING DELTA
 COMMENT 'Cloudability-derived AWS reference rates. Source period_start/end retained for audit only; date validation is disabled. Preserve reference status.'
 -- @@
-CREATE OR REPLACE FUNCTION __FQ__.dcp_aws_rates(p_as_of DATE, p_basis STRING)
+CREATE OR REPLACE FUNCTION __FQ__.dcp_aws_rates(p_basis STRING)
 RETURNS TABLE(provider STRING, service STRING, sku STRING, unit STRING, region STRING,
  rate DOUBLE, status STRING, source STRING, effective_start STRING, effective_end STRING,
  observed_rate DOUBLE, notes STRING)

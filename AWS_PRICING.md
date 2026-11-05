@@ -2,7 +2,7 @@
 
 Setup reads an existing table configured with `aws_pricing_catalog`, `aws_pricing_schema`, and `aws_pricing_table_name`. The twelve original columns are required; setup does not create or import pricing data. Missing source row IDs are derived as hashes without changing the table.
 
-AWS rate selection ignores `period_start` and `period_end`. These columns remain in source records and audit notes. No estimate is blocked because rates are outside those dates. Legacy request `_aws_pricing.as_of` and SQL helper `p_as_of` are retained for compatibility but ignored for AWS selection. Databricks date filtering remains unchanged and uses the original runtime date.
+AWS rate selection ignores `period_start` and `period_end`. These columns remain in source records and audit notes. No estimate is blocked because rates are outside those dates. Legacy request `_aws_pricing.as_of` is ignored for AWS selection. The SQL helper accepts only the pricing basis; it has no date argument. Databricks date filtering remains unchanged and uses the original runtime date.
 
 BILLED selects `billed_rate` by default. Request `"_aws_pricing": {"basis": "LIST"}` for `list_price`. Exact service, region, usage type, storage class, charge type and price units must match. When several rows match, the logic selects one usable row deterministically by source row ID, then unit, selected rate, list rate, billed rate and status. This is a stable tie-break, not a latest-period or lowest-price policy. Audit notes record candidate counts and the selected row. Source data is not deleted. No latest-period selection or legacy AWS registry fallback occurs. Source status remains REFERENCE_ONLY for the uploaded Cloudability data.
 
@@ -10,6 +10,8 @@ S3 Standard storage and requests and KMS keys/requests are mapped for us-east-1.
 
 For 90 GB-month, billed cost is 90 × 0.00999606 = $0.8996454; list cost is 90 × 0.01693344 = $1.5240096, regardless of source period dates.
 
-`dcp_rates_json()` reads Databricks registry rows and AWS source rows. `calculator/aws_rate_lookup.py` selects AWS records and normalizes units before the existing calculator formulas execute. `dcp_aws_rates(p_as_of, p_basis)` exposes the equivalent SQL lookup. Dates are audit-only for AWS; missing usable prices remain pending, never zero.
+`dcp_rates_json()` reads Databricks registry rows and AWS source rows. `calculator/aws_rate_lookup.py` selects AWS records and normalizes units before the existing calculator formulas execute. `dcp_aws_rates(p_basis)` exposes the equivalent SQL lookup. Dates are audit-only for AWS; missing usable prices remain pending, never zero.
 
 Pricing selection and conversions are enforced in Python and SQL. Genie instructions describe presentation only; they do not implement rate-selection rules.
+
+Genie certified functions do not support DATE arguments in this deployment. The unused date argument was removed from `dcp_aws_rates`. Call `dcp_aws_rates('BILLED')` or `dcp_aws_rates('LIST')`. Rerun the rebuilt setup notebook against an existing installation before saving/retrying the Genie configuration.

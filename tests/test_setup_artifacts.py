@@ -71,3 +71,16 @@ class SetupArtifactTests(unittest.TestCase):
         for item in source['instructions']['text_instructions']:
             item['content'] = [''.join(item['content']).strip()]
         self.assertEqual(source, current)
+
+    def test_registered_functions_have_no_date_or_timestamp_arguments(self):
+        export=json.loads((ROOT/'genie/serialized_space.json').read_text())
+        registered={f['identifier'].split('.')[-1] for f in export['instructions']['sql_functions']}
+        definitions={}
+        for path in (ROOT/'sql').glob('*.sql'):
+            for statement in path.read_text().split('\n-- @@\n'):
+                match=re.search(r'CREATE OR REPLACE FUNCTION __FQ__\.(\w+)\((.*?)\)\s*RETURNS',statement,re.S)
+                if match: definitions[match[1]]=match[2]
+        for name in registered:
+            with self.subTest(function=name):
+                self.assertNotRegex(definitions[name],r'\b(?:DATE|TIMESTAMP)\b')
+        self.assertEqual(definitions['dcp_aws_rates'],'p_basis STRING')
