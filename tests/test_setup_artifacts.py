@@ -84,3 +84,15 @@ class SetupArtifactTests(unittest.TestCase):
             with self.subTest(function=name):
                 self.assertNotRegex(definitions[name],r'\b(?:DATE|TIMESTAMP)\b')
         self.assertEqual(definitions['dcp_aws_rates'],'p_basis STRING')
+
+    def test_service_principal_genie_folder_is_configurable(self):
+        source = (ROOT/'setup_genie_dcp_agent.py').read_text()
+        self.assertIn('dbutils.widgets.text("genie_parent_path"', source)
+        self.assertIn('W["genie_parent_path"] or "/Users/"', source)
+        job = (ROOT/'resources/setup_agent.job.yml').read_text()
+        self.assertIn('genie_parent_path: ${var.genie_parent_path}', job)
+        bundle = (ROOT/'databricks.yml').read_text()
+        self.assertIn('  fevm_validation:', bundle)
+        self.assertIn('schema: dcp_phase1_dab_validation', bundle)
+        self.assertIn('  mastercard:', bundle)
+        self.assertIn('root_path: ${var.deployment_root}/${bundle.target}', bundle)

@@ -1,0 +1,40 @@
+{
+  "use_case_id": "NEW-WORKLOAD-ID-TEST",
+  "use_case_name": "Daily batch ingestion",
+  "scenarios": [
+    "LOW",
+    "EXPECTED",
+    "HIGH"
+  ],
+  "_areas": {
+    "processing": "INCLUDED",
+    "sql": "NOT_APPLICABLE",
+    "transfer": "NOT_APPLICABLE",
+    "storage": "NOT_APPLICABLE",
+    "model_endpoints": "NOT_APPLICABLE",
+    "one_time_model_jobs": "NOT_APPLICABLE"
+  },
+  "processing": [
+    {
+      "component_id": "NEW-C01",
+      "name": "Daily batch job",
+      "workload_type": "SCHEDULED_BATCH",
+      "runs_per_month": 30,
+      "runtime_hours_low": 0.5,
+      "runtime_hours_expected": 1,
+      "runtime_hours_high": 2,
+      "dbu_per_hour": {
+        "LOW": 2,
+        "EXPECTED": 2,
+        "HIGH": 2
+      }
+    }
+  ],
+  "model_endpoints": [],
+  "one_time_model_jobs": [],
+  "metadata": {
+    "original_inactive_component_ids": {
+      "sql": "NEW-SQL"
+    }
+  }
+}

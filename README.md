@@ -81,3 +81,9 @@ Start new workloads with `dcp_check_inputs(p_request => '...')`; use `dcp_reques
 `dcp_calc_line_items` and `dcp_calc_details` expose breakdowns and explanations for direct calculator use. `dcp_intake_questions` lists schema inputs. `dcp_calc`, `dcp_check` and `dcp_calc_run` are internal execution functions. Use named arguments, omit unused parameters, and never pass the string `'NULL'`.
 
 Use Genie Agent mode for the guided conversation. Instructions guide the conversation; they are not a hard execution boundary, and single-query Chat mode may choose functions directly.
+
+## Regression testing
+
+Run local checks with `python3 -I -m unittest discover -s tests`. For repeatable live Agent Mode tests, use the opt-in runner in [regression/README.md](regression/README.md). It covers guided JSON translation, confirmation before calculation, preserved identifiers/scope, conflicting IDs and invalid or missing runtime, and saves per-turn evidence without changing agent configuration.
+
+For Phase 1 customer migration and isolated fevm validation, see [DAB deployment](docs/PHASE1_DAB_DEPLOYMENT.md).

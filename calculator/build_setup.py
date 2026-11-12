@@ -30,7 +30,8 @@ dbutils.widgets.dropdown("rate_source", "ACCOUNT_PRICES", ["ACCOUNT_PRICES", "LI
 dbutils.widgets.text("sku_region", "US_EAST_N_VIRGINIA", "Billing SKU suffix")
 dbutils.widgets.text("space_id", "", "Existing agent ID to update; blank creates")
 dbutils.widgets.text("space_title", "DCP Cost Estimator", "Agent title")
-W = {key: dbutils.widgets.get(key).strip() for key in ("aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name", "catalog", "schema", "warehouse_id", "rate_source", "sku_region", "space_id", "space_title")}
+dbutils.widgets.text("genie_parent_path", "", "Existing workspace folder for new Genie agent")
+W = {key: dbutils.widgets.get(key).strip() for key in ("aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name", "catalog", "schema", "warehouse_id", "rate_source", "sku_region", "space_id", "space_title", "genie_parent_path")}
 if not W["catalog"] or not W["warehouse_id"]:
     raise ValueError("Provide catalog and warehouse_id")
 if not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", W[key]) for key in ("catalog", "schema", "aws_pricing_catalog", "aws_pricing_schema", "aws_pricing_table_name")):
@@ -89,7 +90,7 @@ client = WorkspaceClient()
 if W["space_id"]:
     agent = client.api_client.do("PATCH", "/api/2.0/genie/spaces/" + W["space_id"], body=body)
 else:
-    body["parent_path"] = "/Users/" + client.current_user.me().user_name
+    body["parent_path"] = W["genie_parent_path"] or "/Users/" + client.current_user.me().user_name
     agent = client.api_client.do("POST", "/api/2.0/genie/spaces", body=body)
 space_id = agent.get("space_id", W["space_id"])
 dbutils.jobs.taskValues.set(key="space_id", value=space_id)

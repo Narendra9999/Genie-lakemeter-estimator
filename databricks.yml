@@ -34,6 +34,12 @@ variables:
   schedule_pause_status:
     description: PAUSED or UNPAUSED for daily DCP rate refresh
     default: PAUSED
+  deployment_root:
+    description: Restricted workspace root for production bundle files
+    default: /Workspace/Users/${workspace.current_user.userName}/.bundle/dcp-cost-estimator
+  genie_parent_path:
+    description: Workspace folder for a newly created Genie agent (required for service-principal deployment)
+    default: ""
   run_as_service_principal:
     description: Service principal application ID for production jobs
     default: ""
@@ -46,5 +52,25 @@ targets:
     mode: production
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.run_as_service_principal}
+  fevm_validation:
+    mode: development
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/fevm_validation
+    variables:
+      catalog: fevm_catalog_naren
+      schema: dcp_phase1_dab_validation
+      aws_pricing_catalog: fevm_catalog_naren
+      aws_pricing_schema: dcp_estimator
+      aws_pricing_table_name: aws_pricing_list
+      warehouse_id: 2b169603bdabc084
+      rate_source: LIST_PRICES
+      space_title: DCP Phase 1 DAB validation
+      schedule_pause_status: PAUSED
+  mastercard:
+    mode: production
+    workspace:
+      root_path: ${var.deployment_root}/${bundle.target}
     run_as:
       service_principal_name: ${var.run_as_service_principal}

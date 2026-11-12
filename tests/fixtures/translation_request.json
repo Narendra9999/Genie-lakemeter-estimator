@@ -1,0 +1,39 @@
+{
+  "request_id": "NEW-WORKLOAD-ID-TEST",
+  "scenarios": [
+    "LOW",
+    "EXPECTED",
+    "HIGH"
+  ],
+  "processing": [
+    {
+      "component_id": "NEW-C01",
+      "workload_type": "scheduled_batch",
+      "runs_per_month": 30,
+      "runtime_hours": {
+        "LOW": 0.5,
+        "EXPECTED": 1,
+        "HIGH": 2
+      },
+      "dbu_per_hour": 2
+    }
+  ],
+  "sql": [
+    {
+      "component_id": "NEW-SQL",
+      "status": "NOT_APPLICABLE"
+    }
+  ],
+  "datasync": {
+    "status": "NOT_APPLICABLE"
+  },
+  "s3_kms": {
+    "status": "NOT_APPLICABLE"
+  },
+  "model_api": {
+    "status": "NOT_APPLICABLE"
+  },
+  "one_time_model_jobs": {
+    "status": "NOT_APPLICABLE"
+  }
+}

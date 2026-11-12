@@ -20,3 +20,4 @@ resources:
               sku_region: ${var.sku_region}
               space_id: ${var.space_id}
               space_title: ${var.space_title}
+              genie_parent_path: ${var.genie_parent_path}
