@@ -15,7 +15,7 @@ class EngineInputTests(unittest.TestCase):
   self.assertEqual(len({r['engine'] for r in self.rows}),5)
  def test_conditional_rules_and_token_units(self):
   self.assertIn('not used for CONTINUOUS_STREAMING',self.by['processing.runs_per_month']['applies_when'])
-  self.assertEqual(self.by['processing.runtime_hours_low']['requirement'],'SCENARIO_BOUND')
+  self.assertEqual(self.by['processing.runtime_hours_low']['requirement'],'DEFAULT')
   self.assertEqual(self.by['model_endpoints.input_tokens_low']['unit'],'tokens/call')
   self.assertEqual(self.by['one_time_model_jobs.input_tokens_low']['unit'],'tokens, job total')
   self.assertEqual(self.by['one_time_model_jobs.api_calls']['input_role'],'CONTEXT_ONLY')

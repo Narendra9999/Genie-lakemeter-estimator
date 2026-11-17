@@ -133,10 +133,26 @@ class AgentRegressionTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 bad = copy.deepcopy(self.request)
                 if mutation == 'negative': bad['processing'][0]['runtime_hours_expected'] = -1
-                if mutation == 'missing-runtime': bad['processing'][0].pop('runtime_hours_expected')
+                if mutation == 'missing-runtime': bad['processing'][0]['runtime_hours_expected'] = None
                 if mutation == 'unknown-area': bad['_areas'].pop('transfer')
                 check = json.loads(adapter.run_check(estimator, bad, None, False))
                 self.assertEqual(check['status'], 'NEEDS_INPUT')
                 result = json.loads(adapter.run(estimator, bad, {'rows': []}, named=False))
                 self.assertEqual(result['status'], 'NEEDS_INPUT')
                 self.assertEqual(result['totals'], [])
+
+    def test_horizontal_scenario_tables_compare_actual_monthly_costs(self):
+        rows = [['LOW','13.50','OK'], ['EXPECTED','27.00','OK'], ['HIGH','54.00','OK']]
+        good = response('| Cost | LOW | EXPECTED | HIGH |\n|---|---|---|---|\n| Recurring monthly | $13.50 | $27.00 | $54.00 |\nConfidence LOW')
+        verify_monthly_totals(good, rows)
+        bad = response('| Cost | LOW | EXPECTED | HIGH |\n|---|---|---|---|\n| Recurring monthly | $54.00 | $27.00 | $13.50 |\nConfidence LOW')
+        with self.assertRaises(AssertionError): verify_monthly_totals(bad, rows)
+
+    def test_monthly_chart_amounts_are_verified_by_scenario(self):
+        rows = [['LOW','13.50','OK'], ['EXPECTED','27.00','OK'], ['HIGH','54.00','OK']]
+        chart = '```\nMonthly USD — priced-area subtotal\nLOW █ $13.50\nEXPECTED ██ $27.00\nHIGH ███ $54.00\n```\nConfidence LOW'
+        verify_monthly_totals(response(chart), rows)
+        for bad in (chart.replace('LOW █ $13.50', 'LOW █ $54.00'),
+                    chart.replace('Monthly USD', 'Annual USD'),
+                    chart.replace('HIGH ███ $54.00', '')):
+            with self.assertRaises(AssertionError): verify_monthly_totals(response(bad), rows)

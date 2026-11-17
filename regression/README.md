@@ -10,11 +10,12 @@ python3 -I -m unittest discover -s tests
 
 These tests run without Databricks credentials or network access. Alongside existing pricing, breakdown and generated-artifact tests, `tests/test_agent_regression.py` verifies:
 
+- Source-default precedence, generated identifiers, LOW confidence and explicit unknown preservation are covered in `tests/test_planning_defaults.py`.
 - The raw alias-based JSON is still rejected by the strict calculator.
 - The reviewed canonical request is accepted.
-- Missing runtime, negative runtime and an unconfirmed area block calculation and produce no totals.
+- Explicitly unknown required runtime (null), negative runtime and an unconfirmed area block calculation and produce no totals. Omitted quantities and scenario bounds use documented defaults with LOW confidence.
 - Regression assertions detect changed identifiers, runtimes, DBU coverage and Not Applicable choices, including loss of the inactive SQL identifier.
-- No function call is allowed before missing inputs and prepared-request confirmation are resolved.
+- No function call is allowed before non-defaultable inputs and prepared-request confirmation are resolved. Omitted IDs/display names are generated; they no longer require a naming question.
 - Input checking must precede totals and both must use identical JSON.
 - Each scenario's displayed monthly amount must match its calculator result; swapped amounts, missing/extra scenarios, pending amounts and omitted confidence fail.
 - Raw validation tables and nonzero dollar figures are rejected during intake, even without calculator calls. Explanations that pending does not mean $0 remain allowed.
@@ -81,3 +82,12 @@ Run local tests for every code change. Run the live command explicitly against a
 This is a targeted suite for the JSON-translation regression. It does not claim complete coverage of every engine, request shape, STRESS scenario, or presentation style. Add fixtures/cases when those behaviors change; never treat a single successful live run as a guarantee against model variability.
 
 See [LATEST_RESULTS.md](LATEST_RESULTS.md) for the initial execution results, including the missing-runtime flow regression found by the live suite.
+
+The live suite now includes `defaulted-quantities`: a canonical scheduled-batch request with omitted numeric inputs must calculate, disclose default values, report LOW confidence, and match direct calculator totals. The legacy `missing-expected-runtime` case uses explicit null under the current policy; omission is now defaultable.
+
+Automatic-default conversation checks:
+
+- `automatic-defaults-prose`: TBD runtime in prose is omitted, defaulted and calculated without an approval question; LOW confidence and defaults must be disclosed.
+- `selected-reporting-defaults`: explicitly requested SQL reporting and supplied concurrent users are preserved and calculated without another inclusion/default approval question.
+
+Defaults do not determine whether an unspecified service is used. Genuine service-selection questions remain valid; these tests explicitly settle the other areas so they isolate default opt-in behavior.

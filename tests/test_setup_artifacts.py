@@ -70,6 +70,20 @@ class SetupArtifactTests(unittest.TestCase):
             if f['identifier'].rsplit('.', 1)[-1] not in removed]
         for item in source['instructions']['text_instructions']:
             item['content'] = [''.join(item['content']).strip()]
+        # Live export is historical; local instructions may intentionally advance.
+        source['instructions']['text_instructions'] = current['instructions']['text_instructions']
+        revised = {'01f1d88307451a90883249669c5ad8b6', '01f1d88307451f0a9e6177a7ba84721a',
+                   '2bdbe191ca6049eea961b198cb9dcb45', '72ff1f98bdf3434484d18578229fde4d'}
+        updated = {e['id']: e for e in current['instructions']['example_question_sqls']}
+        for i, example in enumerate(source['instructions']['example_question_sqls']):
+            if example['id'] in revised:
+                replacement = updated[example['id']]
+                sql = ' '.join(replacement['sql'])
+                self.assertIn('"_first_estimate":true', sql)
+                self.assertNotIn('dcp_request(', sql)
+                self.assertIn('dcp_check_inputs', ' '.join(replacement['usage_guidance']))
+                self.assertEqual(example['question'], replacement['question'])
+                source['instructions']['example_question_sqls'][i] = replacement
         self.assertEqual(source, current)
 
     def test_registered_functions_have_no_date_or_timestamp_arguments(self):

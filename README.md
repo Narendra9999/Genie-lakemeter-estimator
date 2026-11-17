@@ -87,3 +87,19 @@ Use Genie Agent mode for the guided conversation. Instructions guide the convers
 Run local checks with `python3 -I -m unittest discover -s tests`. For repeatable live Agent Mode tests, use the opt-in runner in [regression/README.md](regression/README.md). It covers guided JSON translation, confirmation before calculation, preserved identifiers/scope, conflicting IDs and invalid or missing runtime, and saves per-turn evidence without changing agent configuration.
 
 For Phase 1 customer migration and isolated fevm validation, see [DAB deployment](docs/PHASE1_DAB_DEPLOYMENT.md).
+
+## Planning defaults
+
+Omitted component IDs and display labels are generated automatically; supplied identifiers are preserved. Omitted required numeric quantities use the documented baseline values in `calculator/dcp_adapter.py` (`REQUIRED_DEFAULTS`), also published through `dcp_engine_input_requirements`. These defaults follow repository examples; they are planning assumptions, not measured customer demand. Storage reads default to one request per file.
+
+Using any of these quantity defaults forces overall confidence to **LOW** and adds each field/value to the result's assumptions. Identity defaults alone do not lower confidence. Explicit nulls, invalid inputs, workload/model selection and scope are never silently replaced. The pure calculator source and pricing formulas are unchanged. Updated behavior requires redeploying setup; historical live snapshots and reports describe their original deployment.
+
+Source calculator defaults have priority: the adapter reads dataclass defaults and PlanningAssumptions directly, records their use, and preserves explicit assumption overrides and the token midpoint fallback. Supplemental quantities apply only where the core has no usable default. Any applied cost quantity or engine planning default caps overall confidence at LOW; generated identities alone do not.
+
+## First estimates from spreadsheet rows
+
+Paste a row with its headers or describe the workload; JSON is not required. Genie prepares the calculator request, returns a **First estimate — provisional**, shows LOW/EXPECTED/HIGH monthly costs and a small text range chart, explains assumptions, and shows the prepared inputs. It then asks up to three usage/scope questions to improve accuracy. Omitted IDs and names are generated automatically and are never requested.
+
+The agent uses `_first_estimate: true` for this flow. The adapter marks unspecified scope UNKNOWN, keeps deferred components visibly unpriced, adds unresolved costs to pending counts and labels partial totals `PARTIAL_PENDING_INPUTS`. It does not change the calculator's formulas, rates or invalid-input rules. A strict request without this flag keeps the prior complete-scope validation. Unsupported components are not silently converted to a supported compute/model; they remain unpriced while other valid areas can be estimated. If nothing can be priced, the agent returns prepared inputs and concrete refinement guidance without invented dollar figures.
+
+Model rows support recurring calls/day with input/output tokens per call, daily/monthly token aggregates, and one-time job token totals. Monthly totals are represented as one monthly aggregate (`calls_per_day=1`, `model_days_per_month=1`) to avoid multiplying total tokens by invented calls/days. Supported model selection and pricing still come from the source registry. Explicitly supplied identifiers, quantities and exclusions retain precedence.

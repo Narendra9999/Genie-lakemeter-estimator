@@ -9,6 +9,7 @@ It does no math. It only:
 Validation errors (ValueError) come back as status REJECTED with the calculator's own messages.
 """
 import json
+from dataclasses import MISSING
 from aws_pricing import apply_aws_rates
 
 DISCLAIMER = "Internal planning estimate, not an invoice or committed run rate."
@@ -37,6 +38,129 @@ def _apply_paths(d, paths):
     return d
 
 
+# Baseline quantities are planning assumptions, not observations. Explicit nulls,
+# invalid values, model/workload choices and scope are deliberately never filled.
+REQUIRED_DEFAULTS = {
+    "processing": {"runtime_hours_low": 1, "runtime_hours_expected": 2,
+                   "runtime_hours_high": 3, "runs_per_month": 30},
+    "sql": {"concurrent_users": 10},
+    "transfer": {"daily_gb_low": 5, "daily_gb_expected": 10, "daily_gb_high": 15},
+    "storage": {"retained_tb": 2, "files_per_day": 100, "s3_read_requests_per_file": 1},
+    "model_endpoints": {"calls_per_day": 100, "input_tokens_low": 500,
+                        "input_tokens_expected": 1000, "input_tokens_high": 1500,
+                        "output_tokens_low": 100, "output_tokens_expected": 200, "output_tokens_high": 300},
+    "one_time_model_jobs": {"input_tokens_low": 500, "input_tokens_high": 1500,
+                            "output_tokens_low": 100, "output_tokens_high": 300},
+}
+IDENTITY_DEFAULTS = {"processing": "Processing", "sql": "SQL",
+                     "model_endpoints": "Model", "one_time_model_jobs": "ModelJob"}
+
+
+def prepare_defaults(m, request):
+    """Return a copy and an audit trail. Only omitted fields are defaultable.
+
+    Apply documented quantity baselines to omitted fields only. Scope is never defaulted.
+    Generated identifiers avoid every supplied identifier across all engines.
+    """
+    d = json.loads(json.dumps(request))
+    applied = []
+    if not isinstance(d, dict) or "preset" in d:
+        return d, applied
+    def put(obj, key, value, path, quantity=True):
+        if key not in obj or (not quantity and (obj[key] is None or isinstance(obj[key], str) and not obj[key].strip())):
+            obj[key] = value
+            applied.append({"field": path + key, "value": value, "affects_cost": quantity})
+    if d.get("_first_estimate") is True:
+        # Unknown scope is retained, never silently changed to not applicable.
+        raw = d.get("_areas")
+        if raw is None:
+            raw = d["_areas"] = {}
+        if isinstance(raw, dict):
+            for area in AREAS:
+                if area not in raw and not _has(d.get(area)):
+                    raw[area] = "UNKNOWN"
+    put(d, "use_case_id", "ADHOC", "", False)
+    put(d, "use_case_name", "New workload", "", False)
+    used = set()
+    for area, _, many in SECTIONS:
+        values = d.get(area)
+        for item in (values if isinstance(values, list) else [values]):
+            if isinstance(item, dict) and isinstance(item.get("component_id"), str):
+                used.add(item["component_id"])
+    for area, cls, many in SECTIONS:
+        values = d.get(area)
+        if values is None:
+            continue
+        items = values if many and isinstance(values, list) else [values] if not many and isinstance(values, dict) else []
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            path = f"{area}[{index}]." if many else area + "."
+            if area in IDENTITY_DEFAULTS:
+                prefix = IDENTITY_DEFAULTS[area]
+                number = index + 1
+                while f"{prefix.upper()}-{number:02d}" in used:
+                    number += 1
+                put(item, "component_id", f"{prefix.upper()}-{number:02d}", path, False)
+                if isinstance(item.get("component_id"), str):
+                    used.add(item["component_id"])
+                label = "role" if area == "model_endpoints" else "description" if area == "one_time_model_jobs" else "name"
+                put(item, label, f"{prefix} {index + 1}", path, False)
+            # Read non-null numeric defaults from the source dataclass first.
+            # None denotes an unknown in the core, not a usable planning quantity.
+            core_fields = {f.name: f for f in m.fields(getattr(m, cls))}
+            for field, definition in core_fields.items():
+                value = definition.default
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    put(item, field, value, path)
+            original = dict(item)
+            defaults = REQUIRED_DEFAULTS[area]
+            for field, value in defaults.items():
+                if area == "processing":
+                    workload = item.get("workload_type")
+                    if workload not in m.WORKLOAD_TYPES or workload == "CONTINUOUS_STREAMING":
+                        continue
+                    if field == "runs_per_month" and workload == "EVENT_DRIVEN_BATCH":
+                        continue  # preserve the core's existing event-driven scenario defaults
+                if area == "model_endpoints" and field.endswith("_expected"):
+                    base = field.removesuffix("_expected")
+                    if original.get(base + "_low") is not None and original.get(base + "_high") is not None:
+                        continue  # retain the core's midpoint-of-supplied-token-range behavior
+                definition = core_fields[field]
+                if definition.default is not MISSING and definition.default is not None:
+                    value = definition.default
+                # Explicit unknowns and supplied scenario values remain unchanged.
+                put(item, field, value, path)
+    if d.get("model_endpoints"):
+        put(d, "model_days_per_month", m.EstimateRequest.__dataclass_fields__["model_days_per_month"].default, "")
+    # Engine planning defaults stay in PlanningAssumptions, so source upgrades and
+    # user assumption overrides continue to govern calculation without duplication.
+    assumptions = d.get("assumptions") or {}
+    if isinstance(assumptions, dict):
+        core = m.PlanningAssumptions()
+        keys = set()
+        scenarios = d.get("scenarios") or ["LOW", "EXPECTED", "HIGH"]
+        for item in d.get("processing") or []:
+            if not isinstance(item, dict):
+                continue
+            streaming = item.get("workload_type") == "CONTINUOUS_STREAMING"
+            if streaming:
+                keys.add("continuous_hours_per_month")
+            fixed = item.get("dbu_per_hour")
+            if not isinstance(fixed, dict) or any(sc not in fixed for sc in scenarios):
+                keys.add("continuous_dbu_per_hour" if streaming else "batch_dbu_per_hour")
+            if item.get("workload_type") == "EVENT_DRIVEN_BATCH" and item.get("runs_per_month") is None:
+                keys.add("unconfirmed_event_runs_per_month")
+        if d.get("sql") is not None:
+            keys.update(("sql_active_hours_per_day", "sql_concurrency_factor", "sql_dbu_per_hour_per_band", "sql_users_per_capacity_band"))
+        if d.get("model_endpoints") and "STRESS" in scenarios:
+            keys.add("model_stress_call_multiplier")
+        for key in sorted(keys):
+            if key not in assumptions:
+                applied.append({"field": "assumptions." + key, "value": getattr(core, key), "affects_cost": True})
+    return d, applied
+
+
 def build_request(m, request, overrides=None):
     overrides = dict(overrides or {})
     paths = {k: v for k, v in overrides.items() if "." in k or "[" in k}
@@ -51,7 +175,7 @@ def build_request(m, request, overrides=None):
         if kwargs:
             paths.update(kwargs)
         d = json.loads(json.dumps(request))
-    return m.EstimateRequest.from_dict(_apply_paths(d, paths))
+    return m.EstimateRequest.from_dict(prepare_defaults(m, _apply_paths(d, paths))[0])
 
 
 def build_pricing(m, rates):
@@ -101,6 +225,22 @@ def shape(m, result, rates, areas=None):
             "areas": areas or [], "notes": d["notes"], "summary": m.format_summary(result), "disclaimer": DISCLAIMER}
 
 
+def range_chart(totals):
+    """Presentation only: scale bars from returned costs; never calculate prices."""
+    import math
+    rows = [row for row in totals if row["scenario"] in ("LOW", "EXPECTED", "HIGH")]
+    if not rows or any(not isinstance(row.get("recurring_monthly_usd"), (int, float)) or
+                       not math.isfinite(row["recurring_monthly_usd"]) for row in rows):
+        return None
+    maximum = max(row["recurring_monthly_usd"] for row in rows)
+    lines = ["Monthly USD — priced-area subtotal"]
+    for row in rows:
+        value = row["recurring_monthly_usd"]
+        bar = "█" * (round(24 * value / maximum) if maximum > 0 else 0)
+        lines.append(f"{row['scenario']:<8} {bar:<24} ${value:,.2f}")
+    return "\n".join(lines)
+
+
 def run(m, request, rates, overrides=None, named=None):
     """Entry point used by the Unity Catalog function. Always returns JSON text.
     named = True / False runs the input check first (named use case / ad-hoc or pasted JSON): if anything required is
@@ -143,7 +283,44 @@ def run(m, request, rates, overrides=None, named=None):
             raise ValueError("Overrides must be a JSON object of field: value pairs.")
         built = build_request(m, req, ov)
         result = m.estimate(built, build_pricing(m, rt))
-        return json.dumps(shape(m, result, rt, area_states(built, req.get("_areas"), named)), default=str)
+        _, defaults = prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov)) if "preset" not in req else (req, [])
+        if defaults:
+            result.assumptions_used.extend("Default applied: " + row["field"] + " = " + json.dumps(row["value"]) for row in defaults)
+        cost_defaults = [row for row in defaults if row["affects_cost"]]
+        if cost_defaults:
+            result.overall_confidence = {**result.overall_confidence, "rating": "LOW",
+                "reason": "LOW confidence: omitted inputs used calculator or supplemental planning defaults: " +
+                          "; ".join(row["field"] + " = " + json.dumps(row["value"]) for row in cost_defaults) +
+                          ". Replace these defaults with measured workload values for a more reliable estimate."}
+        prepared, _ = prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))
+        output = shape(m, result, rt, area_states(built, prepared.get("_areas"), named))
+        if req.get("_first_estimate") is True:
+            unknown = [row["area"] for row in output["areas"] if row["state"] in ("UNKNOWN", "UNCONFIRMED")]
+            pending = [{"component_id": area, "reason": "Scope unresolved; not estimated or counted as zero."} for area in unknown]
+            metadata = req.get("metadata") or {}
+            deferred = metadata.get("deferred_inputs", []) if isinstance(metadata, dict) else []
+            if isinstance(deferred, list):
+                for index, item in enumerate(deferred):
+                    if isinstance(item, dict):
+                        pending.append({"component_id": str(item.get("component_id") or item.get("area") or f"deferred-{index+1}"),
+                                        "reason": "Deferred; not estimated: " + str(item.get("reason") or "needs clarification")})
+            output["notes"].insert(0, "FIRST ESTIMATE: provisional estimate for priced areas; see pending scope and assumptions.")
+            if pending:
+                reason = "First estimate is incomplete. Not estimated: " + "; ".join(row["component_id"] + ": " + row["reason"] for row in pending)
+                output["warnings"].append(reason)
+                output["pending"].extend(pending)
+                for total in output["totals"]:
+                    total["pending_items"] += len(pending)
+                    total["status"] = "PARTIAL_PENDING_INPUTS"
+                output["confidence"] = {**output["confidence"], "rating": "LOW",
+                                        "reason": reason + " " + output["confidence"]["reason"]}
+            chart = range_chart(output["totals"])
+            if chart:
+                output["notes"].append(chart)
+            output["summary"] = "FIRST ESTIMATE — provisional priced-area subtotal.\n" + output["summary"]
+            if pending:
+                output["summary"] += "\n" + reason
+        return json.dumps(output, default=str)
     except (ValueError, TypeError) as e:
         msgs = [x.strip(" -") for x in str(e).replace("Invalid estimate request:", "").split("\n") if x.strip(" -")]
         return json.dumps({"status": "REJECTED", "errors": msgs, "totals": [], "line_items": [], "compute_decisions": [],
@@ -154,8 +331,8 @@ def run(m, request, rates, overrides=None, named=None):
 
 # ---- input check: run BEFORE estimating, so missing or mistyped inputs are asked for instead of priced as PENDING ----
 # REQUIRED = no calculator default exists, so the cost would come back PENDING (or the request would be rejected).
-# Inputs with a planning default (DBU/hour, event-driven runs per month, working/transfer days, streaming latency) are
-# not asked for; the estimate lists them as assumptions. It does no math and never changes a value.
+# Omitted required quantities receive the explicit planning baselines above before checks.
+# Supplied values (including null) and scope are preserved. No pricing math is performed here.
 
 SECTIONS = (("processing", "ProcessingComponent", True), ("sql", "SqlReporting", False),
             ("transfer", "DataTransfer", False), ("storage", "AwsStorage", False),
@@ -327,6 +504,8 @@ def _check_request(m, d, out):
     if not isinstance(d, dict):
         out.add("request", None, "request", "WRONG_TYPE", "a JSON object", d, question="Please send the request as a JSON object.")
         return
+    if "_first_estimate" in d and not isinstance(d["_first_estimate"], bool):
+        out.add("request", None, "_first_estimate", "WRONG_TYPE", "true or false", d["_first_estimate"])
     top = {k: v for k, v in d.items() if k not in {s for s, _, _ in SECTIONS} and k != "assumptions"}
     _check_types(m, m.EstimateRequest, top, "request", None, out)
     scenarios = d.get("scenarios") or ["LOW", "EXPECTED", "HIGH"]
@@ -441,7 +620,7 @@ def check(m, request, overrides=None, named=False):
                 question=f"The what-if changes are not valid JSON ({e.msg}). Please resend them as field: value pairs.")
         return out.rows
     if not named and isinstance(req, dict) and "preset" not in req:
-        _check_request(m, _apply_paths(json.loads(json.dumps(req)), ov) if isinstance(ov, dict) else req, out)
+        _check_request(m, prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))[0] if isinstance(ov, dict) else req, out)
     if not any(r["blocking"] for r in out.rows):
         try:   # the calculator's own validation, so the check is never looser than the estimate
             if not isinstance(req, dict):

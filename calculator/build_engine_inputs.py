@@ -66,6 +66,14 @@ def build_rows():
    if f.name=='serving_mode':allowed='PAY_PER_TOKEN';note='Only pay-per-token mode is priced by this engine.'
    example=EXAMPLES.get(f.name,default)
    if f.name=='model':example=model.DEFAULT_MODEL_CONVERSIONS[0].model;allowed='Exact effective model in the DCP conversion registry; no substitute model.'
+   if f.name in adapter.REQUIRED_DEFAULTS.get(area, {}):
+    default=adapter.REQUIRED_DEFAULTS[area][f.name]
+    req='DEFAULT'
+    note+=' Omitted values use this planning baseline and force LOW overall confidence. Explicit null remains unknown; supplied scenario values are preserved.'
+   if f.name=='component_id':
+    req='DEFAULT';note='Generated collision-free when omitted; preserves every supplied identifier. Does not lower confidence.'
+   if role=='IDENTITY' and f.name!='component_id':
+    req='DEFAULT';note='Generated display label when omitted; preserves supplied values. Does not lower confidence.'
    rows.append({'sort_order':len(rows)+1,'input_id':area+'.'+f.name,'engine':ENGINES[area],'request_area':area,'parameter_name':f.name,'json_path':area+('[].' if is_list else '.')+f.name,'data_type':typ,'requirement':req,'applies_when':applies,'default_value_json':json.dumps(default),'unit':unit,'allowed_values':allowed,'question':question,'example_value_json':json.dumps(example),'input_role':role,'notes':note,'calculator_version':model.CALCULATOR_VERSION})
  return rows
 COLUMNS=['sort_order','input_id','engine','request_area','parameter_name','json_path','data_type','requirement','applies_when','default_value_json','unit','allowed_values','question','example_value_json','input_role','notes','calculator_version']

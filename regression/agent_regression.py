@@ -78,8 +78,7 @@ def check_translation_intake(response):
     text = answer_text(response)
     require('NEW-WORKLOAD-ID-TEST' in text and 'NEW-C01' in text,
             'Supplied IDs not acknowledged')
-    require(re.search(r'(?i)(?:name|business)', text) and re.search(r'(?i)DBU', text),
-            'Missing name/DBU clarification')
+    require(re.search(r'(?i)DBU', text), 'Missing DBU scenario clarification')
     # Topic checks on explicit questions, not an exact-response text snapshot.
     for line in text.splitlines():
         if '?' in line:
@@ -103,7 +102,8 @@ def calculation_requests(response):
 
 
 CASE_NAMES = (
-    'translate-confirm-validate-calculate', 'conflicting-identifiers',
+    'spreadsheet-first-estimate', 'model-token-row', 'monthly-token-row',
+    'automatic-defaults-prose', 'selected-reporting-defaults', 'defaulted-quantities', 'translate-confirm-validate-calculate', 'conflicting-identifiers',
     'invalid-negative-runtime', 'missing-expected-runtime',
     'unknown-area-state', 'conflicting-area-status', 'revised-inputs-require-confirmation',
 )
@@ -114,12 +114,29 @@ def verify_monthly_totals(response, rows):
     text = answer_text(response)
     observed = {}
     headers = None
+    horizontal = None
     for line in text.splitlines():
         if not line.lstrip().startswith('|'):
             headers = None
             continue
         cells = [cell.strip().strip('`*') for cell in line.strip().strip('|').split('|')]
         normalized = [re.sub(r'[_-]', ' ', cell.lower()) for cell in cells]
+        scenarios = {cell.upper(): i for i, cell in enumerate(normalized) if cell.upper() in ('LOW', 'EXPECTED', 'HIGH', 'STRESS')}
+        if {'LOW', 'EXPECTED', 'HIGH'} <= scenarios.keys():
+            horizontal = scenarios
+            headers = None
+            continue
+        if horizontal is not None and len(cells) > max(horizontal.values()):
+            label = ' '.join(cell for i, cell in enumerate(normalized) if i not in horizontal.values())
+            if re.search(r'monthly|recurring|subtotal', label):
+                for scenario, index in horizontal.items():
+                    amount = re.sub(r'(?i)USD|[$,`*]', '', cells[index]).strip()
+                    try: value = Decimal(amount)
+                    except InvalidOperation: raise AssertionError('Monthly amount is not numeric for '+scenario)
+                    require(value.is_finite(), 'Non-finite monthly amount for '+scenario)
+                    require(scenario not in observed or observed[scenario] == value, 'Conflicting displayed totals for '+scenario)
+                    observed[scenario] = value
+                continue
         if any('scenario' in cell for cell in normalized):
             scenario_index = next(i for i, cell in enumerate(normalized) if 'scenario' in cell)
             monthly = [i for i, cell in enumerate(normalized)
@@ -141,6 +158,21 @@ def verify_monthly_totals(response, rows):
         require(value.is_finite(), 'Non-finite monthly amount for '+scenario)
         require(scenario not in observed or observed[scenario] == value, 'Conflicting displayed totals for '+scenario)
         observed[scenario] = value
+    # Accept labelled monthly-USD text charts as well as tables. Scope parsing
+    # to fenced chart blocks so unrelated numbers or prepared JSON cannot pass.
+    for block in re.findall(r'```[^\n]*\n(.*?)```', text, re.S):
+        lines = block.strip().splitlines()
+        if not lines or not re.fullmatch(r'Monthly USD[^\n]*', lines[0].strip(), re.I):
+            continue
+        for line in lines[1:]:
+            match = re.fullmatch(r'\s*(LOW|EXPECTED|HIGH|STRESS)\s+[█▇▅▃]+\s+\$([\d,]+(?:\.\d+)?)\s*', line, re.I)
+            if not match:
+                continue
+            scenario, amount = match.groups()
+            scenario = scenario.upper()
+            value = Decimal(amount.replace(',', ''))
+            require(scenario not in observed or observed[scenario] == value, 'Conflicting displayed totals for '+scenario)
+            observed[scenario] = value
     require({row[0] for row in rows} == {'LOW', 'EXPECTED', 'HIGH'}, 'Missing calculator scenario totals')
     require(set(observed) == {row[0] for row in rows}, 'Displayed scenarios do not match the requested scenarios')
     for scenario, monthly, status in rows:
@@ -292,6 +324,105 @@ def run(args):
         (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct, indent=2))
         verify_monthly_totals(final, direct.get('result', {}).get('data_array', []))
 
+    def defaulted_quantities():
+        request = {'processing': [{'workload_type': 'SCHEDULED_BATCH'}],
+                   '_areas': {area: 'NOT_APPLICABLE' for area in
+                              ('sql', 'transfer', 'storage', 'model_endpoints', 'one_time_model_jobs')}}
+        response = turn('defaults', 'Estimate this canonical workload using documented defaults for omitted quantities and generated component IDs. All scope states are already specified. '+json.dumps(request))
+        actual = calculation_requests(response)
+        require(actual.get('_areas') == request['_areas'], 'Defaulting changed explicit scope')
+        item = actual['processing'][0]
+        require(item.get('workload_type') == 'SCHEDULED_BATCH', 'Changed workload type')
+        require('runtime_hours_expected' not in item and 'runs_per_month' not in item,
+                'Inserted defaults as user facts, losing server-side default provenance')
+        text = answer_text(response)
+        require(re.search(r'(?i)low.{0,30}confidence|confidence.{0,30}low', text), 'Default estimate must state LOW confidence')
+        require(re.search(r'(?i)default|assum', text), 'Default estimate omitted assumptions')
+        require('30' in text and re.search(r'(?i)run', text), 'Default run count not disclosed')
+        sql = next(sql for sql in tool_sql(response) if re.search(r'dcp_calc_totals', sql, re.I))
+        identifier = re.search(r'((?:`?[\w-]+`?\.){2}`?dcp_calc_totals`?)\s*\(', sql, re.I)
+        require(identifier is not None, 'Cannot identify fully qualified totals function')
+        literal = json.dumps(actual).replace("'", "''")
+        direct = client.sql("SELECT scenario, recurring_monthly_usd, request_status FROM "+identifier.group(1)+"(p_request => '"+literal+"')")
+        (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct, indent=2))
+        verify_monthly_totals(response, direct.get('result', {}).get('data_array', []))
+
+    def automatic_defaults_prose(reporting=False):
+        prompt = ('Estimate a scheduled batch workload running 30 times per month. Runtime is TBD. '
+                  + ('SQL reporting is also required for 10 concurrent users. Other engines are not applicable.' if reporting else
+                     'The remaining costs are not applicable.'))
+        response = turn('automatic-defaults-prose', prompt)
+        actual = calculation_requests(response)
+        require(actual['processing'][0].get('runs_per_month') == 30, 'Changed supplied run count')
+        require('runtime_hours_expected' not in actual['processing'][0], 'Lost runtime-default provenance')
+        if reporting:
+            require(actual.get('sql', {}).get('concurrent_users') == 10, 'Lost explicit reporting selection or user count')
+        text = answer_text(response)
+        require(re.search(r'(?i)low.{0,30}confidence|confidence.{0,30}low', text), 'Missing LOW confidence')
+        require(re.search(r'(?i)default|assumption', text), 'Missing default disclosure')
+        require(not re.search(r'(?i)(?:shall|should|may|can|would you like).{0,50}(?:use|apply).{0,30}default', text),
+                'Asked permission to apply defaults')
+        require(not re.search(r'(?i)please confirm|confirm whether|need your approval', text), 'Unexpected opt-in gate')
+        sql = next(sql for sql in tool_sql(response) if re.search(r'dcp_calc_totals', sql, re.I))
+        identifier = re.search(r'((?:`?[\w-]+`?\.){2}`?dcp_calc_totals`?)\s*\(', sql, re.I)
+        require(identifier is not None, 'Cannot identify totals function')
+        literal = json.dumps(actual).replace("'", "''")
+        direct = client.sql("SELECT scenario, recurring_monthly_usd, request_status FROM "+identifier.group(1)+"(p_request => '"+literal+"')")
+        (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct, indent=2))
+        verify_monthly_totals(response, direct.get('result', {}).get('data_array', []))
+
+    def first_estimate_row(kind='spreadsheet'):
+        prompts = {
+            'spreadsheet': 'Use-Case ID\tUse-Case Name\tWorkload Types\tCurrent Data Volume\tNew Data Per Day\tProcessing Pattern\tApproximate Runtime\tExpected Concurrent Users\nROW-FIRST\tReconciliation\tData Engineering or ETL; Reporting or Dashboards\t5 TB\t10 GB\tInteractive\tTBD\t10',
+            'model': 'Workload\tModel\tCalls per day\tInput tokens per request\tOutput tokens per request\tOther engines\nModel API summarization\tgpt-5.4-nano\t100\t1000\t200\tNot applicable',
+            'unknown': 'Give a first provisional estimate for the priced areas and show unresolved scope as not estimated: '+json.dumps({**unknown, '_first_estimate':True}),
+            'monthly': 'Workload\tModel\tInput tokens per month\tOutput tokens per month\tOther engines\nMonthly Model API\tgpt-5.4-nano\t1000000\t100000\tNot applicable',
+        }
+        response = turn('first-'+kind, prompts[kind])
+        actual = calculation_requests(response)
+        require(actual.get('_first_estimate') is True, 'Missing explicit provisional-estimate mode')
+        text = answer_text(response)
+        require(re.search(r'(?i)first estimate|provisional',text), 'Missing first-estimate label')
+        require(re.search(r'(?i)confidence',text), 'Missing confidence')
+        require('```json' in text.lower(), 'Prepared calculator inputs were not shown after the estimate')
+        require(not re.search(r'(?i)(?:please provide|please share|what is|need your).{0,30}(?:component|use.case).{0,20}(?:id|name)', text),
+                'Asked for an identity instead of defaulting it')
+        require('█' in text or re.search(r'(?i)chart|▇|▅|▃',text), 'Missing simple range chart')
+        require(not re.search(r'(?i)no estimate can be calculated yet|cannot calculate.*until',text), 'Generic blocked-first response')
+        # Visible estimate precedes refinement questions and prepared JSON.
+        require(text.find('$') >= 0 and text.find('$') < text.lower().find('```json'), 'Estimate must precede prepared JSON')
+        if kind == 'spreadsheet':
+            require(actual.get('sql',{}).get('concurrent_users')==10, 'Dropped clearly identified SQL reporting')
+            require(actual.get('use_case_id')=='ROW-FIRST', 'Lost supplied use case ID')
+            require(re.search(r'(?i)not estimated|unpriced|not included in|incomplete|unknown',text), 'Unresolved scope not disclosed')
+            require(re.search(r'(?i)to make this more accurate',text), 'Missing targeted refinement questions')
+            require(not actual.get('processing'), 'Ambiguous interactive compute was silently priced as another type')
+        elif kind == 'unknown':
+            require(actual.get('_areas',{}).get('transfer')=='UNKNOWN', 'Unknown transfer scope was silently removed')
+            require(re.search(r'(?i)not estimated|unpriced|incomplete',text), 'Missing pending scope disclosure')
+        else:
+            require(len(actual.get('model_endpoints',[]))==1, 'Model row did not become recurring token inputs')
+            endpoint=actual['model_endpoints'][0]
+            require(endpoint.get('model')=='gpt-5.4-nano','Changed selected model')
+            if kind=='model':
+                require(endpoint.get('calls_per_day')==100, 'Changed calls/day')
+                for bound in ('low','expected','high'):
+                    require(endpoint.get('input_tokens_'+bound)==1000,'Changed supplied input tokens/call')
+                    require(endpoint.get('output_tokens_'+bound)==200,'Changed supplied output tokens/call')
+            else:
+                require(endpoint.get('calls_per_day')==1 and actual.get('model_days_per_month')==1,
+                        'Monthly token totals were multiplied by invented calls or days')
+                for bound in ('low','expected','high'):
+                    require(endpoint.get('input_tokens_'+bound)==1000000,'Changed monthly input tokens')
+                    require(endpoint.get('output_tokens_'+bound)==100000,'Changed monthly output tokens')
+        sql=next(sql for sql in tool_sql(response) if re.search(r'dcp_calc_totals',sql,re.I))
+        identifier=re.search(r'((?:`?[\w-]+`?\.){2}`?dcp_calc_totals`?)\s*\(',sql,re.I)
+        require(identifier is not None, 'Cannot identify totals function')
+        literal=json.dumps(actual).replace("'","''")
+        direct=client.sql("SELECT scenario, recurring_monthly_usd, request_status FROM "+identifier.group(1)+"(p_request => '"+literal+"')")
+        (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct,indent=2))
+        verify_monthly_totals(response,direct.get('result',{}).get('data_array',[]))
+
     def blocked(name, request, required_text):
         response = turn(name, 'Please estimate this workload: '+json.dumps(request))
         no_calls(response)
@@ -302,18 +433,25 @@ def run(args):
     invalid = copy.deepcopy(expected)
     invalid['processing'][0]['runtime_hours_expected'] = -1
     missing = copy.deepcopy(expected)
-    del missing['processing'][0]['runtime_hours_expected']
+    # Explicit unknown remains blocking; omitted quantities now receive planning defaults.
+    missing['processing'][0]['runtime_hours_expected'] = None
     unknown = copy.deepcopy(expected)
     unknown['_areas']['transfer'] = 'UNKNOWN'
     scope_conflict = copy.deepcopy(original)
     scope_conflict['_areas'] = {'transfer': 'INCLUDED'}
     cases = {
+        'spreadsheet-first-estimate': first_estimate_row,
+        'model-token-row': lambda: first_estimate_row('model'),
+        'monthly-token-row': lambda: first_estimate_row('monthly'),
+        'automatic-defaults-prose': automatic_defaults_prose,
+        'selected-reporting-defaults': lambda: automatic_defaults_prose(reporting=True),
+        'defaulted-quantities': defaulted_quantities,
         'translate-confirm-validate-calculate': translation,
         'revised-inputs-require-confirmation': lambda: translation(revise=True),
         'conflicting-identifiers': lambda: blocked('conflict', conflict, ['NEW-WORKLOAD-ID-TEST', 'CONFLICTING-ID']),
         'invalid-negative-runtime': lambda: blocked('invalid-runtime', invalid, ['runtime', r'-1|negative|non.negative']),
         'missing-expected-runtime': lambda: blocked('missing-runtime', missing, ['runtime', 'expected']),
-        'unknown-area-state': lambda: blocked('unknown-area', unknown, ['transfer|DataSync', 'unknown|confirm|scope|included']),
+        'unknown-area-state': lambda: first_estimate_row('unknown'),
         'conflicting-area-status': lambda: blocked('scope-conflict', scope_conflict, ['transfer|DataSync', 'conflict|included|not.applicable']),
     }
     for iteration in range(1, args.repeat+1):
