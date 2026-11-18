@@ -102,7 +102,7 @@ def calculation_requests(response):
 
 
 CASE_NAMES = (
-    'spreadsheet-first-estimate', 'model-token-row', 'monthly-token-row',
+    'rag-planning-row', 'spreadsheet-first-estimate', 'model-token-row', 'monthly-token-row',
     'automatic-defaults-prose', 'selected-reporting-defaults', 'defaulted-quantities', 'translate-confirm-validate-calculate', 'conflicting-identifiers',
     'invalid-negative-runtime', 'missing-expected-runtime',
     'unknown-area-state', 'conflicting-area-status', 'revised-inputs-require-confirmation',
@@ -423,6 +423,28 @@ def run(args):
         (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct,indent=2))
         verify_monthly_totals(response,direct.get('result',{}).get('data_array',[]))
 
+    def rag_planning_row():
+        response = turn('rag-planning', 'Use-Case ID\tUse-Case Name\tWorkload Types\tProcessing Frequency\tAPI volume\tModel\tTokens\nRAG-FIRST-01\tRAG indexing and user queries\tFoundation Model APIs\tOn-demand\t990 API calls per day\tTBD\tTBD')
+        actual=calculation_requests(response)
+        plan=actual.get('_model_planning',{})
+        require(plan.get('profile')=='RAG_REFERENCE_V1','Did not use the audited RAG planning profile')
+        require(plan.get('api_calls_per_day')==990,'Changed supplied daily API volume')
+        require(plan.get('include_initial_indexing') is True,'Dropped conditional initial indexing scenario')
+        require(actual.get('use_case_id')=='RAG-FIRST-01','Lost supplied identifier')
+        text=answer_text(response)
+        require(re.search(r'(?i)planning',text) and re.search(r'(?i)confidence.{0,30}low|low.{0,30}confidence',text),'Missing planning label or LOW confidence')
+        require(re.search(r'(?i)one.time|initial indexing',text),'Indexing must be separate')
+        require(re.search(r'(?i)assum|hypothetical',text),'Missing assumed model/token/corpus disclosure')
+        require(re.search(r'(?i)not included|not estimated|unpriced|unknown',text),'Missing out-of-scope disclosure')
+        require(not re.search(r'(?i)no dollar estimate yet|no estimate can be calculated yet|once I have the model',text),'Still blocks first planning estimate')
+        sql=next(sql for sql in tool_sql(response) if re.search(r'dcp_calc_totals',sql,re.I))
+        identifier=re.search(r'((?:`?[\w-]+`?\.){2}`?dcp_calc_totals`?)\s*\(',sql,re.I)
+        require(identifier is not None,'Cannot identify totals function')
+        literal=json.dumps(actual).replace("'","''")
+        direct=client.sql("SELECT scenario, recurring_monthly_usd, request_status FROM "+identifier.group(1)+"(p_request => '"+literal+"')")
+        (output/(prefix+'direct-totals.json')).write_text(json.dumps(direct,indent=2))
+        verify_monthly_totals(response,direct.get('result',{}).get('data_array',[]))
+
     def blocked(name, request, required_text):
         response = turn(name, 'Please estimate this workload: '+json.dumps(request))
         no_calls(response)
@@ -440,6 +462,7 @@ def run(args):
     scope_conflict = copy.deepcopy(original)
     scope_conflict['_areas'] = {'transfer': 'INCLUDED'}
     cases = {
+        'rag-planning-row': rag_planning_row,
         'spreadsheet-first-estimate': first_estimate_row,
         'model-token-row': lambda: first_estimate_row('model'),
         'monthly-token-row': lambda: first_estimate_row('monthly'),

@@ -91,3 +91,8 @@ Automatic-default conversation checks:
 - `selected-reporting-defaults`: explicitly requested SQL reporting and supplied concurrent users are preserved and calculated without another inclusion/default approval question.
 
 Defaults do not determine whether an unspecified service is used. Genuine service-selection questions remain valid; these tests explicitly settle the other areas so they isolate default opt-in behavior.
+
+`--case rag-planning-row` tests a pasted RAG row with 990 API calls/day and no
+model/token selections. It requires the audited conditional planning profile,
+separate initial indexing, LOW confidence, disclosure of unpriced scope and
+monthly scenario amounts matching direct calculator results.

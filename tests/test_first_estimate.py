@@ -93,3 +93,58 @@ class FirstEstimateTests(unittest.TestCase):
         self.assertEqual(result['status'],'OK')
         self.assertEqual(result['header']['use_case_id'],'ADHOC')
         self.assertEqual(result['line_items'][0]['component_id'],'SQL-01')
+
+    def test_rag_reference_prices_supplied_total_calls_and_separate_indexing(self):
+        request={'_first_estimate':True, 'use_case_id':'KEEP-ME',
+                 '_model_planning':{'profile':'RAG_REFERENCE_V1','api_calls_per_day':990,'include_initial_indexing':True}}
+        original=copy.deepcopy(request)
+        prepared, audit=self.a.prepare_defaults(self.m,request)
+        self.assertAlmostEqual(sum(x['calls_per_day'] for x in prepared['model_endpoints']),990)
+        self.assertEqual(len(prepared['model_endpoints']),4)
+        self.assertEqual(len(prepared['one_time_model_jobs']),2)
+        self.assertEqual(prepared['use_case_id'],'KEEP-ME')
+        self.assertTrue(any(x['field']=='_model_planning.profile' and x['affects_cost'] for x in audit))
+        result=self.run_request(request)
+        self.assertEqual(result['status'],'OK')
+        self.assertEqual(result['confidence']['rating'],'LOW')
+        self.assertTrue(all(t['recurring_monthly_usd']>0 and t['one_time_usd']>0 for t in result['totals']))
+        self.assertEqual({x['component_id'] for x in result['pending']},{'processing','sql','storage','transfer'})
+        source=self.m.estimate(self.a.build_request(self.m,request),self.a.build_pricing(self.m,self.rates))
+        self.assertEqual([t['recurring_monthly_usd'] for t in result['totals']],
+                         [t['recurring_monthly_usd'] for t in self.a.shape(self.m,source,self.rates)['totals']])
+        self.assertEqual(request,original)
+
+    def test_rag_planning_preserves_days_and_does_not_invent_indexing_unless_selected(self):
+        request={'_first_estimate':True,'model_days_per_month':20,
+                 '_model_planning':{'profile':'RAG_REFERENCE_V1','api_calls_per_day':100}}
+        prepared,_=self.a.prepare_defaults(self.m,request)
+        self.assertNotIn('one_time_model_jobs',prepared)
+        self.assertEqual(prepared['model_days_per_month'],20)
+        self.assertEqual(prepared['_areas']['one_time_model_jobs'],'UNKNOWN')
+
+    def test_rag_planning_rejects_invalid_inputs_explicit_model_replacement_and_scope_conflicts(self):
+        baseline={'_first_estimate':True,'_model_planning':{'profile':'RAG_REFERENCE_V1','api_calls_per_day':990}}
+        cases=[]
+        for value in (None,-1,True,'990',float('inf')):
+            request=copy.deepcopy(baseline);request['_model_planning']['api_calls_per_day']=value;cases.append(request)
+        for extra in ({'_first_estimate':False},{'model_endpoints':[{'model':'SUPPLIED-MODEL'}]},
+                      {'_areas':{'model_endpoints':'NOT_APPLICABLE'}}):
+            cases.append({**baseline,**extra})
+        request=copy.deepcopy(baseline);request['_model_planning']['profile']='UNKNOWN';cases.append(request)
+        for request in cases:
+            with self.subTest(request=request):
+                self.assertEqual(json.loads(self.a.run_check(self.m,request))['status'],'NEEDS_INPUT')
+                self.assertEqual(self.run_request(request)['totals'],[])
+
+    def test_rag_reference_retains_recurring_embeddings_and_enrichment(self):
+        request={'_first_estimate':True,'_model_planning':{'profile':'RAG_REFERENCE_V1','api_calls_per_day':990,'include_initial_indexing':True}}
+        prepared,_=self.a.prepare_defaults(self.m,request)
+        self.assertEqual({item['model'] for item in prepared['model_endpoints']},
+                         {'gpt-5.4-nano','gte-large-en','gpt-5-4','claude-sonnet-4-6'})
+        self.assertEqual({item['model'] for item in prepared['one_time_model_jobs']},{'gpt-5-4','gte-large-en'})
+        self.assertAlmostEqual(sum(item['calls_per_day'] for item in prepared['model_endpoints']),990)
+        result=self.run_request(request)
+        self.assertEqual([t['recurring_monthly_usd'] for t in result['totals']],[106.08,481.93,857.78])
+        self.assertEqual([t['one_time_usd'] for t in result['totals']],[509.29,530.54,551.79])
+        request['_model_planning']['profile']='RAG_REFERENCE_V2'
+        self.assertEqual(json.loads(self.a.run_check(self.m,request))['status'],'NEEDS_INPUT')

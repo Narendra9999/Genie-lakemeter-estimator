@@ -103,3 +103,13 @@ Paste a row with its headers or describe the workload; JSON is not required. Gen
 The agent uses `_first_estimate: true` for this flow. The adapter marks unspecified scope UNKNOWN, keeps deferred components visibly unpriced, adds unresolved costs to pending counts and labels partial totals `PARTIAL_PENDING_INPUTS`. It does not change the calculator's formulas, rates or invalid-input rules. A strict request without this flag keeps the prior complete-scope validation. Unsupported components are not silently converted to a supported compute/model; they remain unpriced while other valid areas can be estimated. If nothing can be priced, the agent returns prepared inputs and concrete refinement guidance without invented dollar figures.
 
 Model rows support recurring calls/day with input/output tokens per call, daily/monthly token aggregates, and one-time job token totals. Monthly totals are represented as one monthly aggregate (`calls_per_day=1`, `model_days_per_month=1`) to avoid multiplying total tokens by invented calls/days. Supported model selection and pricing still come from the source registry. Explicitly supplied identifiers, quantities and exclusions retain precedence.
+
+For RAG intake rows without model selections, Genie prepares a conditional
+`_model_planning` scenario using `RAG_REFERENCE_V1`, `_first_estimate: true`, and
+the supplied total `api_calls_per_day`. Recurring routing, embeddings, enrichment
+and answers use the source reference weights 330:300:215:132, normalized from
+977 calls/day to the supplied total. Initial full-corpus indexing is a separate
+one-time cost and does not replace recurring query activity. The source token
+and corpus assumptions are audited with LOW confidence. Retrieval/vector search
+itself remains unpriced. Supplied model components cannot be overwritten.
+The 85/15 split and V2 profile were withdrawn; core formulas remain unchanged.

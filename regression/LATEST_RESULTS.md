@@ -1,3 +1,41 @@
+# Original recurring RAG profile restored — November 18, 2026
+
+User reverted the 85/15, one-time-only embedding/enrichment change. Restored RAG_REFERENCE_V1 weights 330:300:215:132, normalized to the supplied total API call volume. Recurring scope again includes Nano routing, GTE query/incremental embeddings, GPT enrichment and Claude final answers. Initial GPT/GTE full-corpus indexing remains a separate one-time operation. Removed RAG_REFERENCE_V2 and answer_call_share support; new regression checks prevent loss of recurring embeddings/enrichment and reject the withdrawn profile.
+
+- Local tests: **66 PASS**; whitespace checks PASS.
+- Restored fevm validation agent/schema and synchronized setup DAB; configuration read-back PASS. Evidence: `benchmark/results/first-estimate-deploy-20261118T184459Z/`.
+- Live Agent Mode `rag-planning-row`: **PASS**, with monthly figures matching direct calculator results. Evidence: `benchmark/results/agent-regression/20261118T184524533867Z/`.
+- For the 990-total-calls/day planning scenario, monthly LOW/EXPECTED/HIGH again $106.08 / $481.93 / $857.78, plus one-time $509.29 / $530.54 / $551.79. LOW confidence remains mandatory; model/token/corpus assumptions are disclosed and retrieval/vector search remains unpriced.
+
+Earlier V2 results below are historical and superseded by this restoration. Original agent, source calculator pricing formulas and AWS source data unchanged.
+
+---
+
+# RAG V2: 85/15 recurring split and one-time setup — November 18, 2026
+
+User-approved policy: recurring Model API calls are 85% claude-sonnet-4-6 answers and 15% gpt-5.4-nano routing/reranking. GPT enrichment (gpt-5-4) and GTE embeddings (gte-large-en) are one-time initial setup only. Indexing with unspecified frequency defaults to initial load; explicit recurring/both requests require explicit canonical components. Retrieval/vector search remains unpriced, not a model-call percentage. RAG_REFERENCE_V2 is the default for new scenarios; V1 stays executable for historical reproducibility.
+
+- Local suite: **67 PASS**; whitespace checks PASS.
+- Isolated fevm validation agent/schema updated; setup DAB synchronized. Original agent and pricing source data untouched.
+- Live direct acceptance PASS: recurring LOW/EXPECTED/HIGH $493.00 / $2,050.49 / $3,607.98; initial setup $509.29 / $530.54 / $551.79; LOW confidence. Recurring line items contain only Claude/Nano; one-time line items contain only GPT/GTE. Evidence: `benchmark/results/rag-v2-direct-20261118T184046Z/`.
+- Live Agent Mode `rag-planning-row`: **PASS**; returned monthly scenario figures match direct calculator results. Evidence: `benchmark/results/agent-regression/20261118T184032157525Z/`.
+- The larger recurring estimate reflects 85% of 990 calls reaching Claude versus approximately 13.5% in the previous profile, with unchanged token assumptions and rates. These are total model API calls, not necessarily user requests. No retrieval/vector-search charge is included.
+
+---
+
+# Conditional RAG model planning — November 18, 2026
+
+Reviewed the latest turn in fevm validation conversation `01f1e2d7289f1bb088ef8836c0a78bb2`: the agent withheld the estimate for the RAG intake row because no model was specified. Added `_model_planning` profile `RAG_REFERENCE_V1`, based on source-calculator model/token/corpus assumptions. It requires first-estimate mode, normalizes the source role split from 977 total API calls/day to the supplied 990, audits the hypothetical inputs, forces LOW confidence and prices initial indexing separately when selected. Explicit model components cannot be overwritten by this profile; invalid values and explicit scope conflicts still block. Other engines stay UNKNOWN and unpriced. Core calculator formulas unchanged.
+
+- Local tests: **65 PASS**; diff whitespace check PASS.
+- Deployed only to validation agent `01f1dec23c071fe68b29cab8c42f3fe8` and schema `fevm_catalog_naren.dcp_phase1_dab_validation`; DAB setup synchronized. Original agent and AWS source data unchanged.
+- Direct live acceptance PASS: monthly LOW/EXPECTED/HIGH $106.08 / $481.93 / $857.78; one-time $509.29 / $530.54 / $551.79; confidence LOW; four infrastructure areas pending. Evidence: `benchmark/results/rag-planning-direct-20261118T182937Z/`.
+- Agent Mode: **2 PASS / 0 FAIL** (`rag-planning-row`, `model-token-row`). The missing-model row produced scenario costs, per-role models/token ranges, full-corpus assumptions, a chart, generated labels and refinement questions. Monthly figures match direct calculator output. Evidence: `benchmark/results/agent-regression/20261118T182919716956Z/`.
+
+These amounts differ from the user's sample because the original source scenario allocated only 977 calls/day; the new conditional scenario allocates all 990 supplied API calls. API calls are not assumed to mean 990 final-answer user requests. Initial indexing volume remains hypothetical, independent of daily call count. No claim of full conversational regression coverage or Mastercard deployment is made.
+
+---
+
 # First-estimate flow and automatic identities — November 17, 2026
 
 Deployed only to fevm validation agent `01f1dec23c071fe68b29cab8c42f3fe8`, schema `fevm_catalog_naren.dcp_phase1_dab_validation`. Original agent, AWS source table and Mastercard environment unchanged. Missing/null/blank IDs and names are generated automatically; supplied identities are preserved. Never ask for identities, even as optional refinement questions.

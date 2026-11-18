@@ -13,7 +13,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP Smart Estimation Calculator v4.0.2 (notebooks/dcp_estimator.py, embedded verbatim) as a Unity Catalog function. Runs the input check first (named = true: named use case, validate only; false: ad-hoc or pasted JSON, every required input; NULL: no check) and returns status NEEDS_INPUT with one question per missing or invalid input instead of pricing. Otherwise builds the request (preset or JSON, plus what-if overrides), prices it only with the supplied rate card, and returns the full result JSON or status REJECTED with the calculator validation errors. Internal: call through dcp_calc_totals / dcp_calc_line_items / dcp_calc_details.'
 AS $$
 import sys, types, textwrap
-KEY = "12c62c6b56"
+KEY = "e4be7567b4"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -1773,14 +1773,69 @@ IDENTITY_DEFAULTS = {"processing": "Processing", "sql": "SQL",
                      "model_endpoints": "Model", "one_time_model_jobs": "ModelJob"}
 
 
+def expand_model_planning(m, request):
+    """Expand an explicit, versioned reference scenario; never change pricing math.
+
+    Daily API calls are a TOTAL across reference roles, not user requests.
+    The model/corpus choices are hypothetical, never measured workload facts.
+    """
+    d = json.loads(json.dumps(request))
+    if not isinstance(d, dict) or "_model_planning" not in d:
+        return d, []
+    plan = d["_model_planning"]
+    if d.get("_first_estimate") is not True or "preset" in d:
+        raise ValueError("Model planning requires _first_estimate=true and cannot wrap a preset.")
+    if not isinstance(plan, dict) or plan.get("profile") != "RAG_REFERENCE_V1":
+        raise ValueError("Unknown model planning profile; use RAG_REFERENCE_V1.")
+    if set(plan) - {"profile", "api_calls_per_day", "include_initial_indexing"}:
+        raise ValueError("Unsupported model planning fields.")
+    calls = plan.get("api_calls_per_day")
+    import math
+    if isinstance(calls, bool) or not isinstance(calls, (int, float)) or not math.isfinite(calls) or calls < 0:
+        raise ValueError("api_calls_per_day must be a finite non-negative number.")
+    indexing = plan.get("include_initial_indexing", False)
+    if not isinstance(indexing, bool):
+        raise ValueError("include_initial_indexing must be true or false.")
+    if d.get("model_endpoints") or d.get("one_time_model_jobs"):
+        raise ValueError("Do not combine a reference model scenario with supplied model components; use explicit components instead.")
+    states = d.get("_areas") or {}
+    if not isinstance(states, dict):
+        raise ValueError("_areas must be an object.")
+    for area in (["model_endpoints", "one_time_model_jobs"] if indexing else ["model_endpoints"]):
+        if states.get(area) in ("EXCLUDED", "NOT_APPLICABLE"):
+            raise ValueError("Reference planning conflicts with explicit scope for " + area)
+    reference = m.preset_ai_rag_model_api().to_dict()
+    endpoints = reference["model_endpoints"]
+    reference_calls = sum(item["calls_per_day"] for item in endpoints)
+    # Normalize the source role allocation to the supplied total model API calls.
+    for item in endpoints:
+        item["calls_per_day"] = calls * item["calls_per_day"] / reference_calls
+    allocation = "reference weights 330:300:215:132 normalized from 977 total API calls; recurring query embeddings/enrichment are separate from initial full-corpus indexing"
+    for item in endpoints:
+        item.pop("component_id", None)
+    d["model_endpoints"] = endpoints
+    if indexing:
+        d["one_time_model_jobs"] = reference["one_time_model_jobs"]
+        for item in d["one_time_model_jobs"]:
+            item.pop("component_id", None)
+    audit = [{"field": "_model_planning.profile", "value": {
+        "profile": plan["profile"], "basis": "hypothetical source-calculator RAG reference, not measured production usage",
+        "api_calls_per_day_total": calls,
+        "allocation": allocation,
+        "models_and_tokens": endpoints,
+        "initial_indexing": d.get("one_time_model_jobs", []),
+        "indexing_basis": "independent hypothetical full-corpus tokens; never derived from daily calls" if indexing else "not estimated"
+    }, "affects_cost": True}]
+    return d, audit
+
+
 def prepare_defaults(m, request):
     """Return a copy and an audit trail. Only omitted fields are defaultable.
 
     Apply documented quantity baselines to omitted fields only. Scope is never defaulted.
     Generated identifiers avoid every supplied identifier across all engines.
     """
-    d = json.loads(json.dumps(request))
-    applied = []
+    d, applied = expand_model_planning(m, request)
     if not isinstance(d, dict) or "preset" in d:
         return d, applied
     def put(obj, key, value, path, quantity=True):
@@ -2337,7 +2392,10 @@ def check(m, request, overrides=None, named=False):
                 question=f"The what-if changes are not valid JSON ({e.msg}). Please resend them as field: value pairs.")
         return out.rows
     if not named and isinstance(req, dict) and "preset" not in req:
-        _check_request(m, prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))[0] if isinstance(ov, dict) else req, out)
+        try:
+            _check_request(m, prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))[0] if isinstance(ov, dict) else req, out)
+        except (ValueError, TypeError) as e:
+            out.add("request", None, "_model_planning", "INVALID_VALUE", "valid planning scenario", None, question=str(e))
     if not any(r["blocking"] for r in out.rows):
         try:   # the calculator's own validation, so the check is never looser than the estimate
             if not isinstance(req, dict):
@@ -2392,7 +2450,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP input check (calculator v4.0.2, calculator/dcp_adapter.py check): lists every required input that is missing (no calculator default, so the cost would be PENDING), every value of the wrong type or out of range, and anything the calculator would reject. Returns status READY or NEEDS_INPUT. Internal: call through dcp_check_inputs.'
 AS $$
 import sys, types, textwrap
-KEY = "12c62c6b56"
+KEY = "e4be7567b4"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -4152,14 +4210,69 @@ IDENTITY_DEFAULTS = {"processing": "Processing", "sql": "SQL",
                      "model_endpoints": "Model", "one_time_model_jobs": "ModelJob"}
 
 
+def expand_model_planning(m, request):
+    """Expand an explicit, versioned reference scenario; never change pricing math.
+
+    Daily API calls are a TOTAL across reference roles, not user requests.
+    The model/corpus choices are hypothetical, never measured workload facts.
+    """
+    d = json.loads(json.dumps(request))
+    if not isinstance(d, dict) or "_model_planning" not in d:
+        return d, []
+    plan = d["_model_planning"]
+    if d.get("_first_estimate") is not True or "preset" in d:
+        raise ValueError("Model planning requires _first_estimate=true and cannot wrap a preset.")
+    if not isinstance(plan, dict) or plan.get("profile") != "RAG_REFERENCE_V1":
+        raise ValueError("Unknown model planning profile; use RAG_REFERENCE_V1.")
+    if set(plan) - {"profile", "api_calls_per_day", "include_initial_indexing"}:
+        raise ValueError("Unsupported model planning fields.")
+    calls = plan.get("api_calls_per_day")
+    import math
+    if isinstance(calls, bool) or not isinstance(calls, (int, float)) or not math.isfinite(calls) or calls < 0:
+        raise ValueError("api_calls_per_day must be a finite non-negative number.")
+    indexing = plan.get("include_initial_indexing", False)
+    if not isinstance(indexing, bool):
+        raise ValueError("include_initial_indexing must be true or false.")
+    if d.get("model_endpoints") or d.get("one_time_model_jobs"):
+        raise ValueError("Do not combine a reference model scenario with supplied model components; use explicit components instead.")
+    states = d.get("_areas") or {}
+    if not isinstance(states, dict):
+        raise ValueError("_areas must be an object.")
+    for area in (["model_endpoints", "one_time_model_jobs"] if indexing else ["model_endpoints"]):
+        if states.get(area) in ("EXCLUDED", "NOT_APPLICABLE"):
+            raise ValueError("Reference planning conflicts with explicit scope for " + area)
+    reference = m.preset_ai_rag_model_api().to_dict()
+    endpoints = reference["model_endpoints"]
+    reference_calls = sum(item["calls_per_day"] for item in endpoints)
+    # Normalize the source role allocation to the supplied total model API calls.
+    for item in endpoints:
+        item["calls_per_day"] = calls * item["calls_per_day"] / reference_calls
+    allocation = "reference weights 330:300:215:132 normalized from 977 total API calls; recurring query embeddings/enrichment are separate from initial full-corpus indexing"
+    for item in endpoints:
+        item.pop("component_id", None)
+    d["model_endpoints"] = endpoints
+    if indexing:
+        d["one_time_model_jobs"] = reference["one_time_model_jobs"]
+        for item in d["one_time_model_jobs"]:
+            item.pop("component_id", None)
+    audit = [{"field": "_model_planning.profile", "value": {
+        "profile": plan["profile"], "basis": "hypothetical source-calculator RAG reference, not measured production usage",
+        "api_calls_per_day_total": calls,
+        "allocation": allocation,
+        "models_and_tokens": endpoints,
+        "initial_indexing": d.get("one_time_model_jobs", []),
+        "indexing_basis": "independent hypothetical full-corpus tokens; never derived from daily calls" if indexing else "not estimated"
+    }, "affects_cost": True}]
+    return d, audit
+
+
 def prepare_defaults(m, request):
     """Return a copy and an audit trail. Only omitted fields are defaultable.
 
     Apply documented quantity baselines to omitted fields only. Scope is never defaulted.
     Generated identifiers avoid every supplied identifier across all engines.
     """
-    d = json.loads(json.dumps(request))
-    applied = []
+    d, applied = expand_model_planning(m, request)
     if not isinstance(d, dict) or "preset" in d:
         return d, applied
     def put(obj, key, value, path, quantity=True):
@@ -4716,7 +4829,10 @@ def check(m, request, overrides=None, named=False):
                 question=f"The what-if changes are not valid JSON ({e.msg}). Please resend them as field: value pairs.")
         return out.rows
     if not named and isinstance(req, dict) and "preset" not in req:
-        _check_request(m, prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))[0] if isinstance(ov, dict) else req, out)
+        try:
+            _check_request(m, prepare_defaults(m, _apply_paths(json.loads(json.dumps(req)), ov))[0] if isinstance(ov, dict) else req, out)
+        except (ValueError, TypeError) as e:
+            out.add("request", None, "_model_planning", "INVALID_VALUE", "valid planning scenario", None, question=str(e))
     if not any(r["blocking"] for r in out.rows):
         try:   # the calculator's own validation, so the check is never looser than the estimate
             if not isinstance(req, dict):
