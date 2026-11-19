@@ -280,22 +280,6 @@ def shape(m, result, rates, areas=None):
             "areas": areas or [], "notes": d["notes"], "summary": m.format_summary(result), "disclaimer": DISCLAIMER}
 
 
-def range_chart(totals):
-    """Presentation only: scale bars from returned costs; never calculate prices."""
-    import math
-    rows = [row for row in totals if row["scenario"] in ("LOW", "EXPECTED", "HIGH")]
-    if not rows or any(not isinstance(row.get("recurring_monthly_usd"), (int, float)) or
-                       not math.isfinite(row["recurring_monthly_usd"]) for row in rows):
-        return None
-    maximum = max(row["recurring_monthly_usd"] for row in rows)
-    lines = ["Monthly USD — priced-area subtotal"]
-    for row in rows:
-        value = row["recurring_monthly_usd"]
-        bar = "█" * (round(24 * value / maximum) if maximum > 0 else 0)
-        lines.append(f"{row['scenario']:<8} {bar:<24} ${value:,.2f}")
-    return "\n".join(lines)
-
-
 def run(m, request, rates, overrides=None, named=None):
     """Entry point used by the Unity Catalog function. Always returns JSON text.
     named = True / False runs the input check first (named use case / ad-hoc or pasted JSON): if anything required is
@@ -369,9 +353,6 @@ def run(m, request, rates, overrides=None, named=None):
                     total["status"] = "PARTIAL_PENDING_INPUTS"
                 output["confidence"] = {**output["confidence"], "rating": "LOW",
                                         "reason": reason + " " + output["confidence"]["reason"]}
-            chart = range_chart(output["totals"])
-            if chart:
-                output["notes"].append(chart)
             output["summary"] = "FIRST ESTIMATE — provisional priced-area subtotal.\n" + output["summary"]
             if pending:
                 output["summary"] += "\n" + reason

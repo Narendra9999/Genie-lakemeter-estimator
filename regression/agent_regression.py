@@ -387,7 +387,7 @@ def run(args):
         require('```json' in text.lower(), 'Prepared calculator inputs were not shown after the estimate')
         require(not re.search(r'(?i)(?:please provide|please share|what is|need your).{0,30}(?:component|use.case).{0,20}(?:id|name)', text),
                 'Asked for an identity instead of defaulting it')
-        require('█' in text or re.search(r'(?i)chart|▇|▅|▃',text), 'Missing simple range chart')
+        require(not re.search(r'[█▇▅▃]', text), 'Text bars replaced native visualization/table fallback')
         require(not re.search(r'(?i)no estimate can be calculated yet|cannot calculate.*until',text), 'Generic blocked-first response')
         # Visible estimate precedes refinement questions and prepared JSON.
         require(text.find('$') >= 0 and text.find('$') < text.lower().find('```json'), 'Estimate must precede prepared JSON')

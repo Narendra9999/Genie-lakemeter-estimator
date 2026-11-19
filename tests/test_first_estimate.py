@@ -31,7 +31,7 @@ class FirstEstimateTests(unittest.TestCase):
             self.assertGreater(t['recurring_monthly_usd'],0)
             self.assertEqual(t['status'],'PARTIAL_PENDING_INPUTS')
             self.assertEqual(t['pending_items'],5)
-        self.assertTrue(any('Monthly USD' in n for n in result['notes']))
+        self.assertFalse(any('Monthly USD' in n or '█' in n for n in result['notes']))
         self.assertEqual(req,original)
         strict=self.run_request({'sql':{'concurrent_users':10}})
         self.assertEqual(strict['status'],'NEEDS_INPUT')
@@ -79,12 +79,14 @@ class FirstEstimateTests(unittest.TestCase):
         self.assertEqual(len({t['recurring_monthly_usd'] for t in result['totals']}),1)
         self.assertEqual(result['pending'],[])
 
-    def test_chart_uses_exact_result_amounts_and_omits_unknown_values(self):
-        totals=[{'scenario':s,'recurring_monthly_usd':v} for s,v in [('LOW',10),('EXPECTED',20),('HIGH',30)]]
-        chart=self.a.range_chart(totals)
-        for v in ('$10.00','$20.00','$30.00'): self.assertIn(v,chart)
-        totals[1]['recurring_monthly_usd']=None
-        self.assertIsNone(self.a.range_chart(totals))
+    def test_presentation_change_preserves_calculated_scenario_totals(self):
+        request={'_first_estimate':True,'sql':{'concurrent_users':10},
+                 '_areas':{a:'NOT_APPLICABLE' for a in self.a.AREAS if a!='sql'}}
+        result=self.run_request(request)
+        built=self.a.build_request(self.m,request)
+        source=self.m.estimate(built,self.a.build_pricing(self.m,self.rates))
+        self.assertEqual(result['totals'],self.a.shape(self.m,source,self.rates)['totals'])
+        self.assertFalse(any('█' in note for note in result['notes']))
 
     def test_null_and_blank_identities_are_generated_without_affecting_user_ids(self):
         request={'_first_estimate':True, 'use_case_id':None, 'use_case_name':'',

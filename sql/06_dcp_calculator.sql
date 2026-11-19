@@ -13,7 +13,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP Smart Estimation Calculator v4.0.2 (notebooks/dcp_estimator.py, embedded verbatim) as a Unity Catalog function. Runs the input check first (named = true: named use case, validate only; false: ad-hoc or pasted JSON, every required input; NULL: no check) and returns status NEEDS_INPUT with one question per missing or invalid input instead of pricing. Otherwise builds the request (preset or JSON, plus what-if overrides), prices it only with the supplied rate card, and returns the full result JSON or status REJECTED with the calculator validation errors. Internal: call through dcp_calc_totals / dcp_calc_line_items / dcp_calc_details.'
 AS $$
 import sys, types, textwrap
-KEY = "e4be7567b4"
+KEY = "68aff4b62c"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -1997,22 +1997,6 @@ def shape(m, result, rates, areas=None):
             "areas": areas or [], "notes": d["notes"], "summary": m.format_summary(result), "disclaimer": DISCLAIMER}
 
 
-def range_chart(totals):
-    """Presentation only: scale bars from returned costs; never calculate prices."""
-    import math
-    rows = [row for row in totals if row["scenario"] in ("LOW", "EXPECTED", "HIGH")]
-    if not rows or any(not isinstance(row.get("recurring_monthly_usd"), (int, float)) or
-                       not math.isfinite(row["recurring_monthly_usd"]) for row in rows):
-        return None
-    maximum = max(row["recurring_monthly_usd"] for row in rows)
-    lines = ["Monthly USD — priced-area subtotal"]
-    for row in rows:
-        value = row["recurring_monthly_usd"]
-        bar = "█" * (round(24 * value / maximum) if maximum > 0 else 0)
-        lines.append(f"{row['scenario']:<8} {bar:<24} ${value:,.2f}")
-    return "\n".join(lines)
-
-
 def run(m, request, rates, overrides=None, named=None):
     """Entry point used by the Unity Catalog function. Always returns JSON text.
     named = True / False runs the input check first (named use case / ad-hoc or pasted JSON): if anything required is
@@ -2086,9 +2070,6 @@ def run(m, request, rates, overrides=None, named=None):
                     total["status"] = "PARTIAL_PENDING_INPUTS"
                 output["confidence"] = {**output["confidence"], "rating": "LOW",
                                         "reason": reason + " " + output["confidence"]["reason"]}
-            chart = range_chart(output["totals"])
-            if chart:
-                output["notes"].append(chart)
             output["summary"] = "FIRST ESTIMATE — provisional priced-area subtotal.\n" + output["summary"]
             if pending:
                 output["summary"] += "\n" + reason
@@ -2450,7 +2431,7 @@ LANGUAGE PYTHON
 COMMENT 'DCP input check (calculator v4.0.2, calculator/dcp_adapter.py check): lists every required input that is missing (no calculator default, so the cost would be PENDING), every value of the wrong type or out of range, and anything the calculator would reject. Returns status READY or NEEDS_INPUT. Internal: call through dcp_check_inputs.'
 AS $$
 import sys, types, textwrap
-KEY = "e4be7567b4"
+KEY = "68aff4b62c"
 DCP_SOURCE_0 = r'''
 """
 DCP Smart Estimation Calculator - reusable core module
@@ -4434,22 +4415,6 @@ def shape(m, result, rates, areas=None):
             "areas": areas or [], "notes": d["notes"], "summary": m.format_summary(result), "disclaimer": DISCLAIMER}
 
 
-def range_chart(totals):
-    """Presentation only: scale bars from returned costs; never calculate prices."""
-    import math
-    rows = [row for row in totals if row["scenario"] in ("LOW", "EXPECTED", "HIGH")]
-    if not rows or any(not isinstance(row.get("recurring_monthly_usd"), (int, float)) or
-                       not math.isfinite(row["recurring_monthly_usd"]) for row in rows):
-        return None
-    maximum = max(row["recurring_monthly_usd"] for row in rows)
-    lines = ["Monthly USD — priced-area subtotal"]
-    for row in rows:
-        value = row["recurring_monthly_usd"]
-        bar = "█" * (round(24 * value / maximum) if maximum > 0 else 0)
-        lines.append(f"{row['scenario']:<8} {bar:<24} ${value:,.2f}")
-    return "\n".join(lines)
-
-
 def run(m, request, rates, overrides=None, named=None):
     """Entry point used by the Unity Catalog function. Always returns JSON text.
     named = True / False runs the input check first (named use case / ad-hoc or pasted JSON): if anything required is
@@ -4523,9 +4488,6 @@ def run(m, request, rates, overrides=None, named=None):
                     total["status"] = "PARTIAL_PENDING_INPUTS"
                 output["confidence"] = {**output["confidence"], "rating": "LOW",
                                         "reason": reason + " " + output["confidence"]["reason"]}
-            chart = range_chart(output["totals"])
-            if chart:
-                output["notes"].append(chart)
             output["summary"] = "FIRST ESTIMATE — provisional priced-area subtotal.\n" + output["summary"]
             if pending:
                 output["summary"] += "\n" + reason

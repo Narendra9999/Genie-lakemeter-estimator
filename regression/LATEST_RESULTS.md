@@ -1,3 +1,11 @@
+## Native chart presentation — 2026-11-19
+
+- Removed adapter-generated Unicode range charts and the instruction requiring copied chart notes. Prefer native visualization of current scenario costs; retain the cost table when unavailable.
+- Local validation: 66 tests PASS; generated configuration copies match; diff whitespace check PASS.
+- Isolated fevm agent updated and instructions read back successfully. Agent Mode test PASS: no text bars, check/totals request parity, displayed monthly costs match direct calculation ($13.50 / $27.00 / $40.50).
+- Native chart rendering remains unverified: this Agent Mode response reported no native chart tool and returned tables. Removing the text fallback does not establish native visualization availability.
+- Evidence: `benchmark/results/native-chart-20261119T163938Z/`; deployment backup/read-back: `benchmark/results/first-estimate-deploy-20261119T163915Z/`.
+
 # Original recurring RAG profile restored — November 18, 2026
 
 User reverted the 85/15, one-time-only embedding/enrichment change. Restored RAG_REFERENCE_V1 weights 330:300:215:132, normalized to the supplied total API call volume. Recurring scope again includes Nano routing, GTE query/incremental embeddings, GPT enrichment and Claude final answers. Initial GPT/GTE full-corpus indexing remains a separate one-time operation. Removed RAG_REFERENCE_V2 and answer_call_share support; new regression checks prevent loss of recurring embeddings/enrichment and reject the withdrawn profile.
